@@ -1,0 +1,380 @@
+/* DevNexus - Project Discovery Stylesheet
+   Follows Midnight Blue & Deep Purple Platform Aesthetic */
+
+@import url("./dashboard.css");
+
+/* Discovery Hero Header */
+.projects-hero {
+  padding: 32px 0 20px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+.projects-hero-inner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.projects-title-group h1 {
+  margin: 0 0 8px;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.projects-title-group p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  max-width: 65ch;
+  line-height: 1.5;
+}
+.projects-status-badges {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.meta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.meta-pill.live {
+  color: var(--link);
+  border-color: rgba(99, 102, 241, 0.4);
+  background: rgba(99, 102, 241, 0.12);
+}
+.meta-pill.rate-limit {
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.12);
+}
+
+/* Filter Controls Box */
+.filter-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow);
+}
+.filter-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+}
+@media (max-width: 1100px) {
+  .filter-grid {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+@media (max-width: 720px) {
+  .filter-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.filter-field label {
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.filter-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.filter-input-wrap svg {
+  position: absolute;
+  left: 10px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.filter-input-wrap input {
+  width: 100%;
+  height: 38px;
+  padding: 0 12px 0 32px;
+  font: inherit;
+  font-size: 13.5px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.filter-input-wrap input:focus {
+  border-color: var(--border-accent);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.25);
+}
+.filter-select-custom {
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13.5px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.filter-select-custom:focus {
+  border-color: var(--border-accent);
+}
+.filter-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+/* Active Chips Bar */
+.active-filters-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.active-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+}
+.filter-chip a {
+  display: inline-flex;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 13px;
+  transition: color .15s;
+}
+.filter-chip a:hover {
+  color: #f87171;
+}
+
+/* Repository Card Grid */
+.repo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 20px;
+  margin-bottom: 32px;
+}
+@media (max-width: 480px) {
+  .repo-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Repository Card */
+.repo-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: transform .2s, border-color .2s, box-shadow .2s;
+  position: relative;
+  overflow: hidden;
+}
+.repo-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--border-accent);
+  box-shadow: 0 10px 28px rgba(8, 11, 26, 0.9), 0 0 20px rgba(124, 58, 237, 0.22);
+}
+.repo-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.repo-owner-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.repo-owner-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.repo-identity {
+  min-width: 0;
+}
+.repo-owner-name {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repo-title-link {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+  transition: color .15s;
+}
+.repo-title-link:hover {
+  color: var(--link);
+}
+.repo-desc {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--muted);
+  margin: 0 0 14px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 62px;
+}
+
+/* Topics list */
+.repo-topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+  min-height: 28px;
+}
+.topic-tag {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(124, 58, 237, 0.28);
+  color: var(--accent-text);
+  transition: background .15s, border-color .15s;
+}
+.topic-tag:hover {
+  background: rgba(99, 102, 241, 0.24);
+  border-color: var(--link);
+}
+
+/* Card metrics */
+.repo-metrics {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+  font-size: 12.5px;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+.repo-metric-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.repo-metric-item strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.lang-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* Card actions */
+.repo-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.repo-actions .btn {
+  flex: 1;
+  text-align: center;
+}
+
+/* Pagination */
+.pagination-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 32px 0 16px;
+  flex-wrap: wrap;
+}
+.pagination-btn {
+  padding: 7px 16px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all .15s;
+}
+.pagination-btn:hover:not(.disabled) {
+  border-color: var(--border-accent);
+  background: var(--surface-2);
+  color: var(--link);
+}
+.pagination-btn.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.pagination-info {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 8px;
+}

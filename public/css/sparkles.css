@@ -1,0 +1,241 @@
+/* ==========================================================================
+   DevNexus - Midnight Blue & Deep Purple Background & Aurora System
+   Sophisticated combination of:
+     - Midnight navy: #080B1A
+     - Deep blue: #10152B
+     - Dark indigo: #17143A
+     - Deep purple: #241548
+   Light Mode: White with subtle lavender and powder-blue gradients.
+   Strictly non-intrusive: sits behind all page content (z-index: -1).
+   ========================================================================== */
+
+.sparkles-bg-wrap {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  overflow: hidden;
+  background: transparent;
+}
+
+/* ==========================================================================
+   1. Floating Luminous Orbs & Blue-Purple Aurora Gradients
+   ========================================================================== */
+.aurora-container {
+  position: absolute;
+  inset: -25%;
+  width: 150%;
+  height: 150%;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.aurora-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  will-change: transform, opacity;
+  transition: background 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+              filter 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ---------- Dark Mode Orbs: Midnight Blue, Dark Indigo, Deep Purple & Glowing Violet ---------- */
+.aurora-orb-1 {
+  width: min(720px, 65vw);
+  height: min(720px, 65vw);
+  top: 3%;
+  left: 0%;
+  background: radial-gradient(circle at 45% 45%,
+    rgba(124, 58, 237, 0.22) 0%,
+    rgba(67, 56, 202, 0.17) 40%,
+    rgba(23, 20, 58, 0.12) 65%,
+    transparent 76%
+  );
+  animation: auroraDrift1 22s ease-in-out infinite alternate;
+}
+
+.aurora-orb-2 {
+  width: min(780px, 70vw);
+  height: min(780px, 70vw);
+  top: 12%;
+  right: -5%;
+  background: radial-gradient(circle at 50% 50%,
+    rgba(99, 102, 241, 0.20) 0%,
+    rgba(67, 56, 202, 0.16) 45%,
+    rgba(36, 21, 72, 0.13) 65%,
+    transparent 76%
+  );
+  animation: auroraDrift2 28s ease-in-out infinite alternate;
+}
+
+.aurora-orb-3 {
+  width: min(680px, 60vw);
+  height: min(680px, 60vw);
+  bottom: 5%;
+  left: 20%;
+  background: radial-gradient(circle at 50% 50%,
+    rgba(167, 139, 250, 0.17) 0%,
+    rgba(124, 58, 237, 0.14) 40%,
+    rgba(16, 21, 43, 0.12) 65%,
+    transparent 76%
+  );
+  animation: auroraDrift3 24s ease-in-out infinite alternate;
+}
+
+/* ---------- Light Mode Orbs: Subtle Lavender & Powder-Blue Waves ---------- */
+[data-theme="light"] .aurora-orb {
+  filter: blur(90px);
+}
+
+[data-theme="light"] .aurora-orb-1 {
+  background: radial-gradient(circle at 45% 45%,
+    rgba(221, 214, 254, 0.60) 0%,
+    rgba(191, 219, 254, 0.42) 42%,
+    rgba(245, 243, 255, 0.18) 65%,
+    transparent 76%
+  );
+}
+
+[data-theme="light"] .aurora-orb-2 {
+  background: radial-gradient(circle at 50% 50%,
+    rgba(191, 219, 254, 0.55) 0%,
+    rgba(221, 214, 254, 0.44) 44%,
+    rgba(237, 233, 254, 0.22) 65%,
+    transparent 76%
+  );
+}
+
+[data-theme="light"] .aurora-orb-3 {
+  background: radial-gradient(circle at 50% 50%,
+    rgba(221, 214, 254, 0.50) 0%,
+    rgba(191, 219, 254, 0.36) 45%,
+    rgba(245, 243, 255, 0.20) 65%,
+    transparent 76%
+  );
+}
+
+@keyframes auroraDrift1 {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(60px, 45px, 0) scale(1.08); }
+  100% { transform: translate3d(-40px, 75px, 0) scale(0.95); }
+}
+
+@keyframes auroraDrift2 {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(-60px, 55px, 0) scale(1.1); }
+  100% { transform: translate3d(45px, -35px, 0) scale(0.93); }
+}
+
+@keyframes auroraDrift3 {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(50px, -50px, 0) scale(1.07); }
+  100% { transform: translate3d(-50px, -30px, 0) scale(0.95); }
+}
+
+/* ==========================================================================
+   2. Twinkling CSS Starfield Layers
+   ========================================================================== */
+.sparkles-stars-1,
+.sparkles-stars-2 {
+  position: absolute;
+  inset: 0;
+  background-repeat: repeat;
+  pointer-events: none;
+  transition: opacity 0.6s ease;
+}
+
+/* Dark Mode Starfield: Soft Violet, Indigo, Deep Purple & Crisp White */
+.sparkles-stars-1 {
+  background-image:
+    radial-gradient(1.2px 1.2px at 35px 50px, rgba(255, 255, 255, 0.85), transparent),
+    radial-gradient(1.5px 1.5px at 160px 100px, rgba(167, 139, 250, 0.8), transparent),
+    radial-gradient(1.6px 1.6px at 300px 220px, rgba(99, 102, 241, 0.8), transparent),
+    radial-gradient(1.2px 1.2px at 450px 90px, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1.5px 1.5px at 580px 260px, rgba(124, 58, 237, 0.75), transparent),
+    radial-gradient(1.6px 1.6px at 720px 150px, rgba(129, 140, 248, 0.75), transparent),
+    radial-gradient(1.2px 1.2px at 860px 320px, rgba(255, 255, 255, 0.85), transparent),
+    radial-gradient(1.5px 1.5px at 1000px 80px, rgba(167, 139, 250, 0.8), transparent),
+    radial-gradient(1.6px 1.6px at 1140px 240px, rgba(99, 102, 241, 0.8), transparent);
+  background-size: 650px 380px;
+  animation: sparklesTwinkle1 6s ease-in-out infinite alternate;
+}
+
+.sparkles-stars-2 {
+  background-image:
+    radial-gradient(1.4px 1.4px at 90px 180px, rgba(129, 140, 248, 0.75), transparent),
+    radial-gradient(1.6px 1.6px at 220px 320px, rgba(255, 255, 255, 0.85), transparent),
+    radial-gradient(1.5px 1.5px at 370px 120px, rgba(124, 58, 237, 0.75), transparent),
+    radial-gradient(1.5px 1.5px at 520px 340px, rgba(99, 102, 241, 0.75), transparent),
+    radial-gradient(1.3px 1.3px at 660px 70px, rgba(255, 255, 255, 0.85), transparent),
+    radial-gradient(1.6px 1.6px at 810px 230px, rgba(167, 139, 250, 0.75), transparent),
+    radial-gradient(1.4px 1.4px at 950px 350px, rgba(129, 140, 248, 0.75), transparent),
+    radial-gradient(1.6px 1.6px at 1090px 170px, rgba(124, 58, 237, 0.8), transparent);
+  background-size: 750px 420px;
+  animation: sparklesTwinkle2 8s ease-in-out infinite 2s alternate;
+}
+
+/* Light Mode Starfield: Pale Purple, Lavender & Powder Blue */
+[data-theme="light"] .sparkles-stars-1 {
+  background-image:
+    radial-gradient(1.4px 1.4px at 35px 50px, rgba(124, 58, 237, 0.65), transparent),
+    radial-gradient(1.6px 1.6px at 160px 100px, rgba(59, 130, 246, 0.65), transparent),
+    radial-gradient(1.7px 1.7px at 300px 220px, rgba(99, 102, 241, 0.6), transparent),
+    radial-gradient(1.4px 1.4px at 450px 90px, rgba(167, 139, 250, 0.6), transparent),
+    radial-gradient(1.6px 1.6px at 580px 260px, rgba(124, 58, 237, 0.55), transparent),
+    radial-gradient(1.7px 1.7px at 720px 150px, rgba(59, 130, 246, 0.65), transparent),
+    radial-gradient(1.4px 1.4px at 860px 320px, rgba(99, 102, 241, 0.6), transparent),
+    radial-gradient(1.6px 1.6px at 1000px 80px, rgba(167, 139, 250, 0.6), transparent),
+    radial-gradient(1.7px 1.7px at 1140px 240px, rgba(124, 58, 237, 0.65), transparent);
+  opacity: 0.7;
+}
+
+[data-theme="light"] .sparkles-stars-2 {
+  background-image:
+    radial-gradient(1.5px 1.5px at 90px 180px, rgba(99, 102, 241, 0.6), transparent),
+    radial-gradient(1.7px 1.7px at 220px 320px, rgba(167, 139, 250, 0.6), transparent),
+    radial-gradient(1.5px 1.5px at 370px 120px, rgba(124, 58, 237, 0.65), transparent),
+    radial-gradient(1.7px 1.7px at 520px 340px, rgba(59, 130, 246, 0.55), transparent),
+    radial-gradient(1.5px 1.5px at 660px 70px, rgba(167, 139, 250, 0.65), transparent),
+    radial-gradient(1.7px 1.7px at 810px 230px, rgba(99, 102, 241, 0.6), transparent),
+    radial-gradient(1.5px 1.5px at 950px 350px, rgba(124, 58, 237, 0.65), transparent),
+    radial-gradient(1.7px 1.7px at 1090px 170px, rgba(59, 130, 246, 0.6), transparent);
+  opacity: 0.65;
+}
+
+@keyframes sparklesTwinkle1 {
+  0% { opacity: 0.45; transform: translateY(0); }
+  50% { opacity: 0.95; }
+  100% { opacity: 0.55; transform: translateY(-6px); }
+}
+
+@keyframes sparklesTwinkle2 {
+  0% { opacity: 0.5; transform: translateY(0); }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; transform: translateY(-8px); }
+}
+
+/* ==========================================================================
+   3. Canvas Layer: Floating Sparkles, 4-Point Twinkling Stars & Light Trails
+   ========================================================================== */
+.sparkles-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   4. Accessibility: Prefers-reduced-motion
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .aurora-orb,
+  .sparkles-stars-1,
+  .sparkles-stars-2 {
+    animation: none !important;
+  }
+  .sparkles-canvas {
+    display: none !important;
+  }
+}

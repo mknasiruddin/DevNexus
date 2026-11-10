@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Developer Onboarding | DevNexus</title>
+  <meta name="description" content="Personalize your DevNexus developer profile, skills, and contribution preferences.">
+  <%- include('partials/theme-script') %>
+  <link rel="stylesheet" href="/css/sparkles.css">
+  <link rel="stylesheet" href="/css/dashboard.css">
+  <style>
+    .onboarding-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 40px 36px;
+      box-shadow: var(--shadow);
+    }
+    .skill-check-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .skill-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 14px;
+      border-radius: 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      font-size: 13.5px;
+      font-weight: 500;
+      transition: all .15s;
+    }
+    .skill-label:hover { border-color: var(--muted); }
+    .skill-label:has(input:checked) { border-color: var(--link); background: color-mix(in srgb, var(--link) 12%, transparent); }
+    .skill-label input:checked + span { color: var(--link); font-weight: 600; }
+    .level-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 10px;
+    }
+    .level-card {
+      padding: 16px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      cursor: pointer;
+      text-align: center;
+      transition: all .15s;
+    }
+    .level-card:hover { border-color: var(--muted); transform: translateY(-2px); }
+    .level-card:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+    .level-card input { margin-bottom: 6px; accent-color: var(--accent); }
+    @media (max-width: 600px) {
+      .level-cards { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <%- include('partials/sparkles-bg') %>
+
+  <!-- ======================= NAVBAR ======================= -->
+  <%- include('partials/dashboard-nav', { activePage: 'onboarding', siteName: 'DevNexus' }) %>
+
+  <!-- ======================= MAIN CONTENT ======================= -->
+  <main class="dashboard-main" style="display: flex; align-items: center; justify-content: center; min-height: 75vh;">
+    <div class="container" style="max-width: 640px;">
+      <div class="onboarding-card">
+
+        <div style="text-align: center; margin-bottom: 28px;">
+          <img class="avatar" src="<%= user.avatar_url || 'https://avatars.githubusercontent.com/u/9919?v=4' %>" alt="avatar" width="68" height="68" style="border-radius: 50%; border: 2px solid var(--border); margin-bottom: 12px;">
+          <h2 style="margin: 0 0 8px; font-size: 22px; font-weight: 800; color: var(--text);">Welcome to DevNexus, @<%= user.username %>!</h2>
+          <p style="margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5;">
+            Let's personalize your contribution preferences so our recommendation engine can find the most compatible open-source issues for you.
+          </p>
+        </div>
+
+        <form action="/onboarding" method="POST">
+          <!-- Experience Tier -->
+          <div style="margin-bottom: 24px;">
+            <label style="display: block; font-weight: 600; font-size: 13.5px; margin-bottom: 4px;">
+              1. What is your open-source contribution experience?
+            </label>
+            <div class="level-cards">
+              <label class="level-card">
+                <input type="radio" name="experience_level" value="Beginner" checked>
+                <div style="font-weight: 600; font-size: 13px;">Beginner</div>
+                <div style="font-size: 11.5px; color: var(--muted);">Looking for first PRs &amp; good-first-issues</div>
+              </label>
+
+              <label class="level-card">
+                <input type="radio" name="experience_level" value="Intermediate">
+                <div style="font-weight: 600; font-size: 13px;">Intermediate</div>
+                <div style="font-size: 11.5px; color: var(--muted);">Comfortable with Git &amp; feature issues</div>
+              </label>
+
+              <label class="level-card">
+                <input type="radio" name="experience_level" value="Advanced">
+                <div style="font-weight: 600; font-size: 13px;">Advanced</div>
+                <div style="font-size: 11.5px; color: var(--muted);">Maintainer or complex issue solver</div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Technologies & Skills -->
+          <div style="margin-bottom: 24px;">
+            <label style="display: block; font-weight: 600; font-size: 13.5px; margin-bottom: 4px;">
+              2. Select technologies and languages you want to contribute in:
+            </label>
+            <div class="skill-check-grid">
+              <label class="skill-label">
+                <input type="checkbox" name="skills" value="JavaScript" checked>
+                <span>JavaScript</span>
+              </label>
+              <label class="skill-label">
+                <input type="checkbox" name="skills" value="TypeScript" checked>
+                <span>TypeScript</span>
+              </label>
+              <label class="skill-label">
+                <input type="checkbox" name="skills" value="Python" checked>
+                <span>Python</span>
+              </label>
+              <label class="skill-label">
+                <input type="checkbox" name="skills" value="Node.js">
+                <span>Node.js</span>
+              </label>
+              <label class="skill-label">
+                <input type="checkbox" name="skills" value="Go">
+                <span>Go</span>
+              </label>
+              <label class="skill-label">
+                <input type="checkbox" name="skills" value="Rust">
+                <span>Rust</span>
+              </label>
+              <label class="skill-label">
+                <input type="checkbox" name="skills" value="React">
+                <span>React</span>
+              </label>
+              <label class="skill-label">
+                <input type="checkbox" name="skills" value="Docs">
+                <span>Docs</span>
+              </label>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-lg" style="width: 100%; height: 44px; margin-top: 10px;">
+            Complete Setup &amp; Launch Dashboard &rarr;
+          </button>
+        </form>
+
+      </div>
+    </div>
+  </main>
+
+  <!-- ======================= FOOTER ======================= -->
+  <%- include('partials/footer') %>
+</body>
+</html>

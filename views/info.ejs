@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title %> | DevNexus</title>
+  <meta name="description" content="<%= subtitle %>">
+  <%- include('partials/theme-script') %>
+  <link rel="stylesheet" href="/css/sparkles.css">
+  <link rel="stylesheet" href="/css/dashboard.css">
+  <style>
+    .info-header {
+      padding: 36px 0 24px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    .info-header h1 {
+      margin: 0 0 10px;
+      font-size: clamp(24px, 4vw, 32px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+    .info-header p {
+      margin: 0;
+      font-size: 15.5px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .info-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+      box-shadow: var(--shadow);
+      margin-bottom: 32px;
+      line-height: 1.65;
+      font-size: 15px;
+    }
+    .info-card h2 {
+      margin: 24px 0 12px;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .info-card h2:first-child {
+      margin-top: 0;
+    }
+    .info-card p {
+      margin: 0 0 14px;
+      color: var(--muted);
+    }
+    .info-card p strong {
+      color: var(--text);
+    }
+    .table-custom {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 13.5px;
+    }
+    .table-custom th, .table-custom td {
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      text-align: left;
+    }
+    .table-custom th {
+      background: var(--surface-2);
+      color: var(--text);
+      font-weight: 600;
+    }
+    .table-custom tr:hover {
+      background: color-mix(in srgb, var(--surface-2) 60%, transparent);
+    }
+    .badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      font-weight: 600;
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid rgba(124, 58, 237, 0.35);
+      color: var(--accent-text);
+    }
+  </style>
+</head>
+<body>
+  <%- include('partials/sparkles-bg') %>
+
+  <!-- ======================= NAVBAR ======================= -->
+  <%- include('partials/dashboard-nav', { activePage: section, siteName: 'DevNexus', user: locals.user || null, isAdmin: locals.isAdmin || false }) %>
+
+  <!-- ======================= MAIN CONTENT ======================= -->
+  <main class="dashboard-main" id="main">
+    <div class="container" style="max-width: 900px;">
+
+      <header class="info-header">
+        <span class="badge-pill" style="margin-bottom: 12px;"><%= siteName %> &bull; <%= section.toUpperCase() %></span>
+        <h1><%= title %></h1>
+        <p><%= subtitle %></p>
+      </header>
+
+      <article class="info-card">
+        <% if (section === 'docs') { %>
+          <h2>DevNexus System Architecture</h2>
+          <p>
+            DevNexus is architected as an educational and enterprise-ready open-source collaboration platform built with <strong>Node.js, Express.js, EJS, and SQLite</strong>.
+          </p>
+          <table class="table-custom">
+            <thead>
+              <tr><th>Layer</th><th>Technology</th><th>Purpose</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Runtime &amp; Server</strong></td><td>Node.js &bull; Express.js</td><td>Application server, REST routes, OAuth flow</td></tr>
+              <tr><td><strong>Templating</strong></td><td>Embedded JavaScript (EJS)</td><td>Server-rendered responsive UI with dark/light theme</td></tr>
+              <tr><td><strong>Database Storage</strong></td><td>Node.js native SQLite (ACID)</td><td>Local persistent users, bookmarks, sessions, and activity logs</td></tr>
+              <tr><td><strong>API Gateway</strong></td><td>GitHub REST API v3</td><td>Real-time repository indexing, issue search, rate-limit preservation</td></tr>
+            </tbody>
+          </table>
+
+          <h2>Authentication Pipeline</h2>
+          <p>
+            The platform provides dual authentication:
+          </p>
+          <ul>
+            <li><strong>GitHub OAuth (Primary):</strong> One-click developer sign-in retrieving real GitHub contributor identities and token authorizations.</li>
+            <li><strong>Credential Authentication:</strong> Password hashing via <code>crypto.scryptSync</code> with unique 16-byte random salts.</li>
+          </ul>
+
+        <% } else if (section === 'leaderboard') { %>
+          <h2>Top Open-Source Contributors</h2>
+          <p>
+            Rankings reflect verified pull requests merged into community repositories discovered through DevNexus:
+          </p>
+          <table class="table-custom">
+            <thead>
+              <tr><th>Rank</th><th>Contributor</th><th>Primary Tech</th><th>PRs Merged</th><th>Points</th></tr>
+            </thead>
+          <tbody>
+  <% if (leaderboard && leaderboard.length > 0) { %>
+    <% leaderboard.forEach((contributor, index) => { %>
+      <tr>
+        <td><%= index + 1 %></td>
+        <td>
+          <strong>
+            <%= contributor.username %>
+          </strong>
+        </td>
+        <td><%= contributor.primaryTech || 'Not specified' %></td>
+        <td><%= contributor.prsMerged %></td>
+        <td><%= contributor.points %></td>
+      </tr>
+    <% }); %>
+  <% } else { %>
+    <tr>
+      <td colspan="5">No verified contributors yet.</td>
+    </tr>
+  <% } %>
+</tbody>
+          </table>
+          <p style="font-size:12.5px; color:var(--muted); margin-top:12px;">
+            * Points are awarded when maintainers merge your claimed issues on GitHub.
+          </p>
+
+        <% } else if (section === 'maintainers') { %>
+          <h2>For Project Maintainers</h2>
+          <p>
+            Are you maintaining an open-source project and looking for enthusiastic contributors?
+          </p>
+          <p>
+            DevNexus automatically indexes public repositories with good first issues. To optimize your repository for newcomer discovery:
+          </p>
+          <ol style="color:var(--muted); line-height:1.7; padding-left:20px;">
+            <li>Add a <code>CONTRIBUTING.md</code> file in your repository root.</li>
+            <li>Tag beginner-friendly tasks with the <code>good first issue</code> label.</li>
+            <li>Provide clear issue descriptions and link to the relevant source file.</li>
+            <li>Be responsive in comments to guide first-time pull requests.</li>
+          </ol>
+          <div style="margin-top: 20px;">
+            <a href="/projects" class="btn btn-primary">Discover Indexed Projects &rarr;</a>
+          </div>
+
+        <% } else if (section === 'events') { %>
+          <h2>Upcoming Community Events &amp; Hackathons</h2>
+          <p>
+            Join collaborative open-source events, pairing sessions, and hackathons:
+          </p>
+          <table class="table-custom">
+            <thead>
+              <tr><th>Event</th><th>Format</th><th>Focus</th><th>Date</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Open-Source Sprint #12</strong></td><td>Virtual</td><td>Beginner PRs in JavaScript &amp; Python</td><td>Coming This Saturday</td></tr>
+              <tr><td><strong>Git &amp; PR Masterclass</strong></td><td>Live Stream</td><td>Rebasing, Conflict Resolution, Clean Commits</td><td>Next Wednesday</td></tr>
+              <tr><td><strong>Maintainer Office Hours</strong></td><td>Discord Q&amp;A</td><td>Getting your first open-source project featured</td><td>Bi-weekly</td></tr>
+            </tbody>
+          </table>
+
+        <% } else if (section === 'about') { %>
+          <h2>About DevNexus</h2>
+          <p>
+            <strong>DevNexus</strong> was developed as an Information Science and Engineering Capstone Project. The platform is designed to lower the barrier to entry for students, aspiring software engineers, and first-time contributors entering the open-source community.
+          </p>
+          <p>
+            Unlike static project directories, DevNexus dynamically connects with the live GitHub REST API to surface actively maintained repositories, calculate algorithmic skill compatibility scores, and provide persistent bookmark tracking.
+          </p>
+          <p>
+            <strong>Tech Stack:</strong> Node.js &bull; Express.js &bull; EJS &bull; SQLite &bull; GitHub REST API v3.
+          </p>
+
+        <% } else if (section === 'privacy') { %>
+          <h2>Privacy Policy</h2>
+          <p>
+            DevNexus respects developer privacy and adheres to data minimization principles:
+          </p>
+          <ul>
+            <li><strong>No Tracking:</strong> We do not track you across third-party websites or sell user data.</li>
+            <li><strong>Secure Sessions:</strong> Sessions are stored server-side in SQLite with encrypted HttpOnly cookie identifiers.</li>
+            <li><strong>OAuth Access Tokens:</strong> When you connect with GitHub, OAuth tokens are stored in private server sessions and are never transmitted to client browsers.</li>
+            <li><strong>Data Ownership:</strong> You can delete your account and bookmarks at any time.</li>
+          </ul>
+
+        <% } else if (section === 'terms') { %>
+          <h2>Terms of Service</h2>
+          <p>
+            By accessing or using the DevNexus platform, you agree to:
+          </p>
+          <ul>
+            <li>Use the platform respectfully and adhere to our Contributor Code of Conduct.</li>
+            <li>Comply with GitHub's Terms of Service and API Acceptable Use policies.</li>
+            <li>Avoid automated scraping or spamming maintainers with AI-generated or low-quality pull requests.</li>
+            <li>Support an inclusive and collaborative open-source community.</li>
+          </ul>
+        <% } %>
+
+        <div style="margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--border); display: flex; gap: 12px; flex-wrap: wrap;">
+          <a href="/projects" class="btn btn-primary">Browse Projects &rarr;</a>
+          <a href="/learn" class="btn">Read Contribution Guide &rarr;</a>
+        </div>
+      </article>
+
+    </div>
+  </main>
+
+  <!-- ======================= FOOTER ======================= -->
+  <%- include('partials/footer') %>
+</body>
+</html>
