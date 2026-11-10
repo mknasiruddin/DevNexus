@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Developer Dashboard | DevNexus</title>
+  <meta name="description" content="DevNexus Developer Dashboard - Live GitHub profile, real open-source issue recommendations, and persistent bookmarks.">
+  <%- include('partials/theme-script') %>
+  <link rel="stylesheet" href="/css/sparkles.css">
+  <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+  <%- include('partials/sparkles-bg') %>
+
+  <!-- ======================= NAVBAR ======================= -->
+  <%- include('partials/dashboard-nav', { activePage: 'dashboard', siteName: 'DevNexus' }) %>
+
+  <!-- ======================= LIVE API & PERSISTENCE NOTICE ======================= -->
+  <aside class="disclosure-banner" aria-label="API and Storage Notice">
+    <div class="container disclosure-inner">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span class="disclosure-badge">Live Integration</span>
+        <span>Connected to <strong>GitHub REST API v3</strong>. Bookmarks and user data stored in persistent SQLite.</span>
+      </div>
+      <div>
+        <% if (rateLimit) { %>
+          <span style="font-size: 12px; font-family: var(--mono);" title="Core / Search REST rate limits">
+            API Quota: <strong><%= rateLimit.remaining %></strong> / <%= rateLimit.limit %> remaining
+            <% if (rateLimit.resetInMinutes > 0) { %>(resets in <%= rateLimit.resetInMinutes %>m)<% } %>
+          </span>
+        <% } %>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ======================= MAIN CONTENT ======================= -->
+  <main class="dashboard-main" id="main">
+    <div class="container">
+
+      <!-- Rate Limit or API Error Notice -->
+      <% if (locals.issueError === 'RATE_LIMIT_EXCEEDED') { %>
+        <div class="error-banner" role="alert">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <div>
+              <strong>GitHub API Rate Limit Reached:</strong>
+              <%= issueErrorMessage || 'Unauthenticated requests are limited by GitHub. The limit will reset shortly.' %>
+              <% if (!user && !isOAuthConfigured) { %>
+                Sign in with GitHub or configure <code>GITHUB_TOKEN</code> in <code>.env</code> for 5,000 requests/hour.
+              <% } %>
+            </div>
+          </div>
+        </div>
+      <% } else if (locals.issueError) { %>
+        <div class="error-banner" role="alert">
+          <span><strong>API Notice:</strong> <%= issueErrorMessage || 'Unable to retrieve live issues. Please verify your connection.' %></span>
+        </div>
+      <% } %>
+
+      <div class="dash-grid">
+        <!-- ======================= PROFILE SIDEBAR ======================= -->
+        <aside class="profile-card" aria-label="Developer Profile">
+          <div class="profile-header">
+            <img class="profile-avatar-lg" src="<%= profile.avatar_url %>" alt="<%= profile.name || profile.login %> avatar">
+            <h2 class="profile-name-lg"><%= profile.name || profile.login %></h2>
+            <a href="https://github.com/<%= profile.login %>" target="_blank" rel="noopener noreferrer" class="profile-handle" title="View profile on GitHub">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+              @<%= profile.login %>
+            </a>
+            <p class="profile-bio"><%= profile.bio || 'Open-source software contributor exploring impactful community projects.' %></p>
+
+            <% if (user) { %>
+              <div style="margin-top: 10px;">
+                <span class="level-badge intermediate">
+                  <span class="status-dot online"></span> Authenticated User
+                </span>
+                <div style="margin-top: 8px;">
+                  <a href="/auth/logout" class="btn btn-sm" style="font-size: 11px;">Sign Out</a>
+                </div>
+              </div>
+            <% } else { %>
+              <div style="margin-top: 10px;">
+                <a href="/auth/github" class="btn btn-sm btn-primary" style="width: 100%;">
+                  Sign In with GitHub
+                </a>
+              </div>
+            <% } %>
+          </div>
+
+          <!-- Switch GitHub Handle Form -->
+          <form action="/dashboard" method="GET" style="margin-bottom: 16px;">
+            <div style="display:flex; gap:6px;">
+              <input type="text" name="username" value="<%= targetUsername %>" placeholder="your-github-username" aria-label="GitHub username to inspect" style="flex:1; height:32px; padding:0 8px; font-size:12px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); outline:none;">
+              <button type="submit" class="btn btn-sm">Inspect</button>
+            </div>
+          </form>
+
+          <ul class="meta-list">
+            <li class="meta-item">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <span>GitHub member since <%= new Date(profile.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) %></span>
+            </li>
+            <li class="meta-item">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              <span><strong><%= profile.followers %></strong> followers &bull; <strong><%= profile.following %></strong> following</span>
+            </li>
+            <li class="meta-item">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+              <span>Database Bookmarks: <strong id="sidebar-bookmark-count"><%= bookmarks.length %></strong></span>
+            </li>
+          </ul>
+
+          <div class="skills-section">
+            <h4>Primary Languages</h4>
+            <div class="skills-cloud">
+              <span class="skill-chip"><span class="skill-dot" style="background-color: #f1e05a;"></span>JavaScript</span>
+              <span class="skill-chip"><span class="skill-dot" style="background-color: #3572A5;"></span>Python</span>
+              <span class="skill-chip"><span class="skill-dot" style="background-color: #3178c6;"></span>TypeScript</span>
+              <span class="skill-chip"><span class="skill-dot" style="background-color: #dea584;"></span>Rust</span>
+              <span class="skill-chip"><span class="skill-dot" style="background-color: #00ADD8;"></span>Go</span>
+            </div>
+          </div>
+        </aside>
+
+        <!-- ======================= MAIN CONTENT ======================= -->
+        <section class="dash-content-area">
+          <!-- METRIC CARDS DERIVED FROM REAL DATA -->
+          <div class="metrics-row" aria-label="Live Developer Statistics">
+            <div class="metric-card">
+              <div class="metric-title">Public Repositories</div>
+              <div class="metric-val"><%= profile.public_repos %></div>
+              <div class="metric-sub">Sourced from GitHub profile</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-title">Persistent Bookmarks</div>
+              <div class="metric-val" id="stats-bookmark-count"><%= bookmarks.length %></div>
+              <div class="metric-sub">Stored in SQLite database</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-title">Discovered Issues</div>
+              <div class="metric-val"><%= totalIssuesCount.toLocaleString() %></div>
+              <div class="metric-sub">Matching active query</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-title">API Response Status</div>
+              <div class="metric-val" style="font-size:22px; color:var(--accent-text);">
+                <%= locals.issueError ? 'Rate-Limited' : '200 OK' %>
+              </div>
+              <div class="metric-sub">Live REST connection</div>
+            </div>
+          </div>
+
+          <!-- REAL ISSUE DISCOVERY & FILTERING -->
+          <div class="dash-card">
+            <div class="dash-card-header">
+              <div class="tab-group" role="tablist">
+                <a href="/dashboard?username=<%= targetUsername %>&label=all&language=<%= activeLanguage %>" class="tab-btn <%= activeLabel === 'all' ? 'active' : '' %>">
+                  Recommended For You
+                </a>
+                <a href="/dashboard?username=<%= targetUsername %>&label=good-first-issue&language=<%= activeLanguage %>" class="tab-btn <%= activeLabel === 'good-first-issue' ? 'active' : '' %>">
+                  Good First Issues
+                </a>
+                <a href="/dashboard?username=<%= targetUsername %>&label=help-wanted&language=<%= activeLanguage %>" class="tab-btn <%= activeLabel === 'help-wanted' ? 'active' : '' %>">
+                  Help Wanted
+                </a>
+                <button type="button" class="tab-btn" id="view-bookmarks-tab">
+                  Saved Bookmarks (<span id="tab-bookmark-count"><%= bookmarks.length %></span>)
+                </button>
+              </div>
+            </div>
+
+            <!-- SEARCH AND FILTER CONTROLS -->
+            <form action="/dashboard" method="GET" class="filter-bar" id="issue-search-form">
+              <input type="hidden" name="username" value="<%= targetUsername %>">
+              <input type="hidden" name="label" value="<%= activeLabel %>">
+
+              <div class="filter-search">
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.8"/><path d="M10.6 10.6L14 14"/></svg>
+                <input name="q" value="<%= activeQuery %>" type="search" placeholder="Search open-source issues by keyword or topic..." aria-label="Search open-source issues" autocomplete="off">
+              </div>
+
+              <div class="filter-selects">
+                <select name="language" class="filter-select" onchange="this.form.submit()">
+                  <option value="all" <%= activeLanguage === 'all' ? 'selected' : '' %>>Language: All</option>
+                  <option value="javascript" <%= activeLanguage === 'javascript' ? 'selected' : '' %>>JavaScript</option>
+                  <option value="typescript" <%= activeLanguage === 'typescript' ? 'selected' : '' %>>TypeScript</option>
+                  <option value="python" <%= activeLanguage === 'python' ? 'selected' : '' %>>Python</option>
+                  <option value="rust" <%= activeLanguage === 'rust' ? 'selected' : '' %>>Rust</option>
+                  <option value="go" <%= activeLanguage === 'go' ? 'selected' : '' %>>Go</option>
+                </select>
+
+                <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+              </div>
+            </form>
+
+            <!-- ISSUES LIST -->
+            <div id="issues-list-container">
+              <% if (issues.length === 0) { %>
+                <div class="state-box">
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <h3>No matching open issues found</h3>
+                  <p>Try clearing your keyword query or expanding the language filter to discover more open-source opportunities.</p>
+                  <a href="/dashboard?username=<%= targetUsername %>" class="btn btn-sm">Reset Search</a>
+                </div>
+              <% } else { %>
+                <ul class="issue-items">
+                  <% issues.forEach(function(issue) { %>
+                    <li class="issue-row">
+                      <div class="issue-main">
+                        <div class="issue-header-line">
+                          <a href="<%= issue.repoUrl %>" target="_blank" rel="noopener noreferrer" class="issue-repo-link">
+                            <%= issue.repoName %>
+                          </a>
+                          <span class="issue-number">#<%= issue.number %></span>
+                        </div>
+
+                        <a href="<%= issue.htmlUrl %>" target="_blank" rel="noopener noreferrer" class="issue-title-link">
+                          <%= issue.title %>
+                        </a>
+
+                        <div class="issue-labels">
+                          <% issue.labels.forEach(function(lbl) { %>
+                            <span class="issue-label <%= lbl.isGfi ? 'gfi' : lbl.isHw ? 'hw' : 'tag' %>" style="border-color: <%= lbl.color %>33;">
+                              <%= lbl.name %>
+                            </span>
+                          <% }); %>
+                        </div>
+
+                        <div class="issue-meta-info">
+                          <span>Difficulty: <strong><%= issue.difficulty %></strong></span>
+                          <span>&bull;</span>
+                          <span><%= issue.commentsCount %> comments</span>
+                          <span>&bull;</span>
+                          <span>Opened <%= issue.createdAt %> by <%= issue.author %></span>
+                        </div>
+                      </div>
+
+                      <div class="issue-side">
+                        <div class="compat-badge <%= issue.compatibilityScore >= 85 ? 'high' : 'medium' %>"
+                             title="Skill Overlap: <%= issue.compatibilityBreakdown.skillOverlap %>%, Alignment: <%= issue.compatibilityBreakdown.difficultyAlignment %>%, Community Support: <%= issue.compatibilityBreakdown.mentorSupport %>%">
+                          <%= issue.compatibilityScore %>% Match
+                        </div>
+
+                        <div class="issue-actions">
+                          <button class="bookmark-btn <%= issue.isBookmarked ? 'active' : '' %>"
+                                  data-issue-id="<%= issue.id %>"
+                                  data-number="<%= issue.number %>"
+                                  data-repo="<%= issue.repoName %>"
+                                  data-title="<%= issue.title %>"
+                                  data-html-url="<%= issue.htmlUrl %>"
+                                  data-difficulty="<%= issue.difficulty %>"
+                                  data-comments="<%= issue.commentsCount %>"
+                                  aria-label="Bookmark issue"
+                                  aria-pressed="<%= issue.isBookmarked ? 'true' : 'false' %>"
+                                  title="Toggle bookmark (persisted in SQLite)">
+                            <svg width="16" height="16" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                          </button>
+
+                          <a href="<%= issue.htmlUrl %>" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-primary">
+                            View on GitHub &rarr;
+                          </a>
+                        </div>
+                      </div>
+                    </li>
+                  <% }); %>
+                </ul>
+
+                <!-- PAGINATION CONTROLS -->
+                <% if (totalPages > 1) { %>
+                  <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 24px; border-top:1px solid var(--border); font-size:13px; color:var(--muted);">
+                    <div>
+                      Page <strong><%= currentPage %></strong> of <strong><%= totalPages %></strong> (<%= totalIssuesCount.toLocaleString() %> issues)
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                      <% if (currentPage > 1) { %>
+                        <a href="/dashboard?username=<%= targetUsername %>&label=<%= activeLabel %>&language=<%= activeLanguage %>&q=<%= encodeURIComponent(activeQuery) %>&page=<%= currentPage - 1 %>" class="btn btn-sm">
+                          &larr; Previous
+                        </a>
+                      <% } %>
+                      <% if (currentPage < totalPages) { %>
+                        <a href="/dashboard?username=<%= targetUsername %>&label=<%= activeLabel %>&language=<%= activeLanguage %>&q=<%= encodeURIComponent(activeQuery) %>&page=<%= currentPage + 1 %>" class="btn btn-sm">
+                          Next &rarr;
+                        </a>
+                      <% } %>
+                    </div>
+                  </div>
+                <% } %>
+              <% } %>
+            </div>
+
+            <!-- BOOKMARKS MODAL / CONTAINER (Persistent from SQLite) -->
+            <div id="bookmarks-view-container" style="display: none; padding: 24px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+                <h3 style="margin:0; font-size:16px;">Your Persistent Database Bookmarks (<%= bookmarks.length %>)</h3>
+                <button class="btn btn-sm" id="close-bookmarks-view">Back to Discovery</button>
+              </div>
+
+              <% if (bookmarks.length === 0) { %>
+                <div class="state-box">
+                  <p>No issues bookmarked yet. Click the bookmark ribbon on any discovered issue to store it in your database.</p>
+                </div>
+              <% } else { %>
+                <ul class="issue-items">
+                  <% bookmarks.forEach(function(b) { %>
+                    <li class="issue-row">
+                      <div class="issue-main">
+                        <div class="issue-header-line">
+                          <span class="issue-repo-link"><%= b.repo_name %></span>
+                          <span class="issue-number">#<%= b.issue_number %></span>
+                        </div>
+                        <a href="<%= b.html_url %>" target="_blank" rel="noopener noreferrer" class="issue-title-link">
+                          <%= b.title %>
+                        </a>
+                        <div class="issue-meta-info">
+                          <span>Difficulty: <strong><%= b.difficulty %></strong></span>
+                          <span>&bull;</span>
+                          <span>Saved to SQLite: <%= new Date(b.created_at).toLocaleDateString() %></span>
+                        </div>
+                      </div>
+                      <div class="issue-side">
+                        <a href="<%= b.html_url %>" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-primary">
+                          Open GitHub &rarr;
+                        </a>
+                      </div>
+                    </li>
+                  <% }); %>
+                </ul>
+              <% } %>
+            </div>
+          </div>
+
+          <!-- REAL GITHUB REPOSITORIES -->
+          <div class="dash-card">
+            <div class="dash-card-header">
+              <h3 class="dash-card-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                Public Repositories for @<%= targetUsername %>
+              </h3>
+            </div>
+            <div class="dash-card-body">
+              <% if (repos.length === 0) { %>
+                <p style="color:var(--muted); font-size:13.5px;">No public repositories available for this account.</p>
+              <% } else { %>
+                <div class="repo-grid">
+                  <% repos.forEach(function(r) { %>
+                    <article class="repo-card">
+                      <div class="repo-card-head">
+                        <a href="<%= r.htmlUrl %>" target="_blank" rel="noopener noreferrer" class="repo-card-title">
+                          <%= r.name %>
+                        </a>
+                        <span>★ <%= r.stars %></span>
+                      </div>
+                      <p class="repo-card-desc"><%= r.description %></p>
+                      <div class="repo-card-foot">
+                        <span><%= r.language %></span>
+                        <a href="<%= r.htmlUrl %>" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline">
+                          View Repo &rarr;
+                        </a>
+                      </div>
+                    </article>
+                  <% }); %>
+                </div>
+              <% } %>
+            </div>
+          </div>
+
+          <!-- REAL RECENT ACTIVITY -->
+          <div class="dash-card">
+            <div class="dash-card-header">
+              <h3 class="dash-card-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                Recent Public GitHub Activity
+              </h3>
+            </div>
+            <div class="dash-card-body">
+              <% if (events.length === 0) { %>
+                <p style="color:var(--muted); font-size:13.5px;">No public activity records found in the recent event stream.</p>
+              <% } else { %>
+                <ul class="activity-list">
+                  <% events.forEach(function(ev) { %>
+                    <li class="activity-item">
+                      <div class="activity-icon <%= ev.type === 'pr' ? 'merged' : ev.type === 'push' ? 'opened' : 'comment' %>">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+                      </div>
+                      <div class="activity-content">
+                        <div class="activity-title"><%= ev.title %></div>
+                        <div class="activity-meta">
+                          <a href="<%= ev.repoUrl %>" target="_blank" rel="noopener noreferrer" style="color:var(--link);"><%= ev.repo %></a> &bull; <%= ev.timestamp %>
+                        </div>
+                      </div>
+                    </li>
+                  <% }); %>
+                </ul>
+              <% } %>
+            </div>
+          </div>
+
+        </section>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ======================= FOOTER ======================= -->
+  <%- include('partials/footer') %>
+
+  <!-- Toast -->
+  <div class="toast" id="toast" role="status" aria-live="polite">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.2 3L13 4.5"/></svg>
+    <span id="toast-msg"></span>
+  </div>
+
+  <script src="/js/dashboard.js"></script>
+</body>
+</html>

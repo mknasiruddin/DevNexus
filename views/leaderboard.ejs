@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Community Contributor Leaderboard | DevNexus</title>
+  <meta name="description" content="Verified GitHub open-source community leaderboard. Track real contributors, merged pull requests, and open-source impact.">
+  <%- include('partials/theme-script') %>
+  <link rel="stylesheet" href="/css/sparkles.css">
+  <link rel="stylesheet" href="/css/leaderboard.css">
+</head>
+<body>
+  <%- include('partials/sparkles-bg') %>
+
+  <!-- ======================= NAVBAR ======================= -->
+  <%- include('partials/dashboard-nav', { activePage: 'leaderboard', siteName: 'DevNexus', user: locals.user || null, isAdmin: locals.isAdmin || false }) %>
+
+  <!-- ======================= MAIN CONTENT ======================= -->
+  <main class="dashboard-main" id="main">
+    <div class="container">
+
+      <!-- Flash Notification Banners -->
+      <% if (locals.flashSuccess) { %>
+        <div class="flash-banner success" role="alert">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <span><%= flashSuccess %></span>
+        </div>
+      <% } %>
+
+      <% if (locals.flashError) { %>
+        <div class="flash-banner error" role="alert">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span><%= flashError %></span>
+        </div>
+      <% } %>
+
+      <!-- ======================= HERO SECTION ======================= -->
+      <section class="leaderboard-hero">
+        <div class="leaderboard-hero-inner">
+          <div class="leaderboard-title-group">
+            <h1>
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color: #fbbf24;">
+                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
+                <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+                <path d="M4 22h16"/>
+                <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/>
+                <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/>
+                <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
+              </svg>
+              Community Contributor Leaderboard
+            </h1>
+            <p>
+              Recognizing verified developers making genuine open-source contributions.
+              Every score is mathematically calculated from public GitHub REST API events and DevNexus curation activities.
+            </p>
+          </div>
+
+          <div class="projects-status-badges">
+            <span class="meta-pill live">
+              <span class="status-dot online"></span>
+              Live GitHub REST API v3
+            </span>
+            <span class="meta-pill">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              Event Deduplication Active
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======================= STATS RIBBON ======================= -->
+      <section class="stats-ribbon" aria-label="Platform contributor metrics">
+        <div class="stat-card">
+          <div class="stat-icon purple">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <div class="stat-content">
+            <span class="stat-value"><%= stats.totalContributors %></span>
+            <span class="stat-label">Verified Contributors</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </div>
+          <div class="stat-content">
+            <span class="stat-value"><%= stats.totalEvents %></span>
+            <span class="stat-label">Events Processed</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon green">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
+          </div>
+          <div class="stat-content">
+            <span class="stat-value"><%= stats.totalPRs %></span>
+            <span class="stat-label">Pull Requests Logged</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon gold">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div class="stat-content">
+            <span class="stat-value" style="font-size: 15px; font-weight: 700;">
+              <%= stats.lastSyncedAt ? new Date(stats.lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Live' %>
+            </span>
+            <span class="stat-label">Last Synchronization</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======================= TOP 3 PODIUM ======================= -->
+      <% if (locals.podium && podium.length > 0) { %>
+        <section class="podium-section" aria-label="Top 3 podium contributors">
+          <div class="podium-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <span>Platform Champions</span>
+          </div>
+
+          <div class="podium-grid">
+            <% podium.forEach(contributor => { %>
+              <%
+                const rankClass = contributor.rank === 1 ? 'rank-1' : contributor.rank === 2 ? 'rank-2' : 'rank-3';
+                const badgeClass = contributor.rank === 1 ? 'gold' : contributor.rank === 2 ? 'silver' : 'bronze';
+                const rankTitle = contributor.rank === 1 ? '1st Place' : contributor.rank === 2 ? '2nd Place' : '3rd Place';
+              %>
+              <div class="podium-card <%= rankClass %>">
+                <span class="podium-badge <%= badgeClass %>">
+                  <% if (contributor.rank === 1) { %>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7zm3 14h14v2H5v-2z"/></svg>
+                  <% } %>
+                  <%= rankTitle %>
+                </span>
+
+                <div class="podium-avatar-wrap">
+                  <% if (contributor.rank === 1) { %>
+                    <div class="podium-crown">
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7zm3 14h14v2H5v-2z"/></svg>
+                    </div>
+                  <% } %>
+                  <img class="podium-avatar" src="<%= contributor.avatarUrl %>" alt="<%= contributor.username %>" width="80" height="80">
+                </div>
+
+                <h3 class="podium-name"><%= contributor.name %></h3>
+                <a href="<%= contributor.htmlUrl %>" target="_blank" rel="noopener noreferrer" class="podium-handle">
+                  @<%= contributor.username %> ↗
+                </a>
+
+                <% if (contributor.bio) { %>
+                  <p class="podium-bio"><%= contributor.bio %></p>
+                <% } else { %>
+                  <p class="podium-bio">Active open-source software developer.</p>
+                <% } %>
+
+                <div class="podium-score">
+                  <%= contributor.score %>
+                  <span>pts</span>
+                </div>
+
+                <div class="podium-breakdown">
+                  <span class="metric-chip pr" title="Pull Requests">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
+                    <%= contributor.prsCount %> PRs
+                  </span>
+                  <span class="metric-chip push" title="Commits Pushed">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><line x1="1.05" y1="12" x2="7" y2="12"/><line x1="17.01" y1="12" x2="22.96" y2="12"/></svg>
+                    <%= contributor.commitsCount %> Commits
+                  </span>
+                  <span class="metric-chip issue" title="Issues Opened / Closed">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                    <%= contributor.issuesCount %> Issues
+                  </span>
+                </div>
+
+                <a href="<%= contributor.htmlUrl %>" target="_blank" rel="noopener noreferrer" class="btn btn-sm" style="width: 100%;">
+                  View GitHub Profile
+                </a>
+              </div>
+            <% }); %>
+          </div>
+        </section>
+      <% } %>
+
+      <!-- ======================= CONTROLS BAR ======================= -->
+      <section class="leaderboard-controls" aria-label="Leaderboard category and time controls">
+        <!-- Category Tabs -->
+        <div class="tabs-group" role="tablist">
+          <a href="/leaderboard?category=top&time=<%= time %><%= search ? '&q=' + encodeURIComponent(search) : '' %>"
+             class="tab-btn <%= category === 'top' ? 'active' : '' %>"
+             role="tab"
+             aria-selected="<%= category === 'top' %>">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            Top Contributors
+          </a>
+
+          <a href="/leaderboard?category=active&time=<%= time %><%= search ? '&q=' + encodeURIComponent(search) : '' %>"
+             class="tab-btn <%= category === 'active' ? 'active' : '' %>"
+             role="tab"
+             aria-selected="<%= category === 'active' %>">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            Most Active
+          </a>
+
+          <a href="/leaderboard?category=rising&time=<%= time %><%= search ? '&q=' + encodeURIComponent(search) : '' %>"
+             class="tab-btn <%= category === 'rising' ? 'active' : '' %>"
+             role="tab"
+             aria-selected="<%= category === 'rising' %>">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+            Rising Stars
+          </a>
+        </div>
+
+        <!-- Filters & Search -->
+        <div class="filters-and-search">
+          <!-- Time Window Filter Pills -->
+          <div class="time-pills" aria-label="Time period selection">
+            <a href="/leaderboard?category=<%= category %>&time=this-week<%= search ? '&q=' + encodeURIComponent(search) : '' %>"
+               class="time-pill <%= time === 'this-week' ? 'active' : '' %>">
+              This Week
+            </a>
+            <a href="/leaderboard?category=<%= category %>&time=this-month<%= search ? '&q=' + encodeURIComponent(search) : '' %>"
+               class="time-pill <%= time === 'this-month' ? 'active' : '' %>">
+              This Month
+            </a>
+            <a href="/leaderboard?category=<%= category %>&time=all-time<%= search ? '&q=' + encodeURIComponent(search) : '' %>"
+               class="time-pill <%= time === 'all-time' ? 'active' : '' %>">
+              All Time
+            </a>
+          </div>
+
+          <!-- Contributor Search -->
+          <form class="search-form" action="/leaderboard" method="GET">
+            <input type="hidden" name="category" value="<%= category %>">
+            <input type="hidden" name="time" value="<%= time %>">
+            <svg class="search-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="7" cy="7" r="4.8"/><path d="M10.6 10.6L14 14"/></svg>
+            <input class="search-input" type="search" name="q" placeholder="Filter username..." value="<%= search %>" aria-label="Filter contributors by username or name">
+          </form>
+        </div>
+      </section>
+
+      <!-- ======================= CONTRIBUTORS TABLE ======================= -->
+      <section class="leaderboard-table-card" aria-label="Contributor rankings table">
+        <% if (contributors && contributors.length > 0) { %>
+          <div class="table-responsive">
+            <table class="leaderboard-table">
+              <thead>
+                <tr>
+                  <th style="width: 70px;">Rank</th>
+                  <th>Contributor</th>
+                  <th style="width: 140px;">
+                    <%= category === 'active' ? 'Activity Volume' : category === 'rising' ? 'Velocity / Score' : 'Score' %>
+                  </th>
+                  <th>Verified Activities</th>
+                  <th style="width: 140px;">Community</th>
+                  <th style="width: 110px; text-align: right;">Profile</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% contributors.forEach(contributor => { %>
+                  <%
+                    const rankBadgeClass = contributor.rank === 1 ? 'top-1' : contributor.rank === 2 ? 'top-2' : contributor.rank === 3 ? 'top-3' : '';
+                  %>
+                  <tr>
+                    <!-- Rank Column -->
+                    <td>
+                      <span class="rank-badge <%= rankBadgeClass %>">
+                        #<%= contributor.rank %>
+                      </span>
+                    </td>
+
+                    <!-- Contributor Info Column -->
+                    <td>
+                      <div class="user-cell">
+                        <img class="user-avatar" src="<%= contributor.avatarUrl %>" alt="<%= contributor.username %>" width="44" height="44">
+                        <div class="user-info">
+                          <div class="user-name-row">
+                            <span class="user-name"><%= contributor.name %></span>
+                            <span class="verified-tag" title="Verified via GitHub REST API">
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                              Verified
+                            </span>
+                          </div>
+                          <a href="<%= contributor.htmlUrl %>" target="_blank" rel="noopener noreferrer" class="user-login">
+                            @<%= contributor.username %>
+                          </a>
+                          <% if (contributor.bio) { %>
+                            <span class="user-bio"><%= contributor.bio %></span>
+                          <% } %>
+                        </div>
+                      </div>
+                    </td>
+
+                    <!-- Score Column -->
+                    <td>
+                      <div class="score-badge">
+                        <% if (category === 'active') { %>
+                          <%= contributor.activityCount %>
+                          <span style="font-size: 11px; font-weight: 500; opacity: 0.8;">events</span>
+                        <% } else if (category === 'rising') { %>
+                          +<%= contributor.velocity %>
+                          <span style="font-size: 11px; font-weight: 500; opacity: 0.8;">vel</span>
+                        <% } else { %>
+                          <%= contributor.score %>
+                          <span style="font-size: 11px; font-weight: 500; opacity: 0.8;">pts</span>
+                        <% } %>
+                      </div>
+                    </td>
+
+                    <!-- Verified Activities Breakdown Column -->
+                    <td>
+                      <div class="activity-summary-tags">
+                        <span class="metric-chip pr" title="Verified Pull Requests">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
+                          <%= contributor.prsCount %> PRs
+                        </span>
+                        <span class="metric-chip push" title="Verified Git Commits">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><line x1="1.05" y1="12" x2="7" y2="12"/><line x1="17.01" y1="12" x2="22.96" y2="12"/></svg>
+                          <%= contributor.commitsCount %> Commits
+                        </span>
+                        <span class="metric-chip issue" title="Issues Solved / Managed">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                          <%= contributor.issuesCount %> Issues
+                        </span>
+                        <% if (contributor.devnexusPoints > 0) { %>
+                          <span class="metric-chip" title="DevNexus Platform Activity" style="border-color: rgba(99, 102, 241, 0.4); color: var(--link);">
+                            <%= contributor.devnexusPoints %> DevNexus
+                          </span>
+                        <% } %>
+                      </div>
+                    </td>
+
+                    <!-- Community Column -->
+                    <td>
+                      <div style="display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted);">
+                        <span><strong><%= contributor.followers %></strong> followers</span>
+                        <span><strong><%= contributor.publicRepos %></strong> repos</span>
+                      </div>
+                    </td>
+
+                    <!-- Profile Link Column -->
+                    <td style="text-align: right;">
+                      <a href="<%= contributor.htmlUrl %>" target="_blank" rel="noopener noreferrer" class="btn btn-sm" title="View @<%= contributor.username %> on GitHub">
+                        GitHub ↗
+                      </a>
+                    </td>
+                  </tr>
+                <% }); %>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination -->
+          <% if (totalPages > 1) { %>
+            <%
+              function pageUrl(p) {
+                let url = `/leaderboard?category=${category}&time=${time}&page=${p}`;
+                if (search) url += `&q=${encodeURIComponent(search)}`;
+                return url;
+              }
+            %>
+            <nav class="pagination-wrap" style="padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border);" aria-label="Leaderboard pagination">
+              <% if (page > 1) { %>
+                <a href="<%= pageUrl(page - 1) %>" class="pagination-btn">&larr; Previous</a>
+              <% } else { %>
+                <span class="pagination-btn disabled">&larr; Previous</span>
+              <% } %>
+
+              <span class="pagination-info" style="font-size: 13px; color: var(--muted);">
+                Page <strong><%= page %></strong> of <strong><%= totalPages %></strong> (<%= totalCount %> contributors)
+              </span>
+
+              <% if (page < totalPages) { %>
+                <a href="<%= pageUrl(page + 1) %>" class="pagination-btn">Next &rarr;</a>
+              <% } else { %>
+                <span class="pagination-btn disabled">Next &rarr;</span>
+              <% } %>
+            </nav>
+          <% } %>
+
+        <% } else { %>
+          <div class="leaderboard-empty">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="color: var(--muted);">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <h3>No contributors match your query</h3>
+            <p>No verified contributors found matching "<%= search %>".</p>
+            <div style="margin-top: 16px;">
+              <a href="/leaderboard" class="btn btn-sm btn-primary">Clear Filter</a>
+            </div>
+          </div>
+        <% } %>
+      </section>
+
+      <!-- ======================= SYNC & SCORING RUBRIC ======================= -->
+      <section class="sync-section">
+        <!-- Live Synchronizer Card -->
+        <div class="sync-card">
+          <h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--link);"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Index Any GitHub Contributor
+          </h3>
+          <p>
+            Verify and rank any real open-source developer. DevNexus will query GitHub's public event log, extract verified pull requests and commits, and compute points live.
+          </p>
+
+          <form class="sync-form" action="/leaderboard/sync" method="POST">
+            <input type="hidden" name="category" value="<%= category %>">
+            <input type="hidden" name="time" value="<%= time %>">
+            <input class="sync-input" type="text" name="username" placeholder="e.g. torvalds, gaearon, octocat" required autocomplete="off">
+            <button type="submit" class="btn-sync">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              Index Live
+            </button>
+          </form>
+        </div>
+
+        <!-- Transparent Scoring Rubric Card -->
+        <div class="sync-card">
+          <h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #34d399;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            Transparent Scoring Rubric
+          </h3>
+          <p>
+            Zero dummy metrics or fabricated points. All contributions are cryptographically validated against unique GitHub Event IDs to prevent double counting.
+          </p>
+
+          <div class="rubric-grid">
+            <div class="rubric-item">
+              <div class="rubric-pts">12 pts</div>
+              <div class="rubric-desc">Merged PR</div>
+            </div>
+            <div class="rubric-item">
+              <div class="rubric-pts">10 pts</div>
+              <div class="rubric-desc">Opened PR</div>
+            </div>
+            <div class="rubric-item">
+              <div class="rubric-pts">4-8 pts</div>
+              <div class="rubric-desc">Push & Commits</div>
+            </div>
+            <div class="rubric-item">
+              <div class="rubric-pts">5 pts</div>
+              <div class="rubric-desc">Issue Solved</div>
+            </div>
+            <div class="rubric-item">
+              <div class="rubric-pts">3 pts</div>
+              <div class="rubric-desc">Code Review</div>
+            </div>
+            <div class="rubric-item">
+              <div class="rubric-pts">1 pt</div>
+              <div class="rubric-desc">DevNexus Curation</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- ======================= FOOTER ======================= -->
+  <%- include('partials/footer') %>
+</body>
+</html>

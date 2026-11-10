@@ -14,7 +14,7 @@
     home: '/', projects: '/projects', issues: '/issues', topics: '/topics',
     guide: '/learn', git: '/learn/git-basics', conduct: '/learn/code-of-conduct',
     leaderboard: '/leaderboard', maintainers: '/maintainers', events: '/events',
-    login: '/login', signup: '/signup', dashboard: '/dashboard', search: '/search',
+    login: '/login', signup: user ? (user.is_onboarded ? '/dashboard' : '/onboarding') : '/login', dashboard: '/dashboard', search: '/search',
     about: '/about', docs: '/docs', privacy: '/privacy', terms: '/terms'
   }, locals.routes || {});
   const stats = Object.assign({ projects: 2400, contributors: 18500, merged: 96000 }, locals.stats || {});
@@ -35,38 +35,49 @@
       document.documentElement.setAttribute('data-theme', t);
     })();
   </script>
+  <link rel="stylesheet" href="/css/sparkles.css">
   <style>
     :root {
-      --bg: #0d1117;
-      --surface: #161b22;
-      --surface-2: #1c2128;
-      --border: #30363d;
-      --text: #e6edf3;
-      --muted: #8b949e;
-      --accent: #238636;
-      --accent-hover: #2ea043;
-      --accent-text: #3fb950;
-      --link: #58a6ff;
-      --shadow: 0 12px 32px rgba(1, 4, 9, .6);
-      --l0: #161b22; --l1: #0e4429; --l2: #006d32; --l3: #26a641; --l4: #39d353;
-      --cell-edge: rgba(240, 246, 252, .06);
+      --bg: #080B1A;
+      --surface: #10152B;
+      --surface-2: #17143A;
+      --border: rgba(99, 102, 241, 0.22);
+      --border-accent: rgba(124, 58, 237, 0.45);
+      --text: #F1F5F9;
+      --muted: #94A3B8;
+      --accent: linear-gradient(135deg, #4338CA 0%, #7C3AED 50%, #6366F1 100%);
+      --accent-solid: #6366F1;
+      --accent-hover: linear-gradient(135deg, #4F46E5 0%, #8B5CF6 50%, #818CF8 100%);
+      --accent-text: #A78BFA;
+      --link: #818CF8;
+      --link-hover: #A5B4FC;
+      --shadow: 0 12px 32px rgba(8, 11, 26, 0.8), 0 0 24px rgba(124, 58, 237, 0.12);
+      --btn-glow: 0 0 20px rgba(124, 58, 237, 0.45), 0 4px 14px rgba(67, 56, 202, 0.35);
+      --btn-glow-hover: 0 0 28px rgba(124, 58, 237, 0.65), 0 6px 18px rgba(99, 102, 241, 0.4);
+      --l0: #10152B; --l1: #1e1b4b; --l2: #3730a3; --l3: #6366f1; --l4: #a78bfa;
+      --cell-edge: rgba(99, 102, 241, 0.15);
       --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
       --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
     }
     [data-theme="light"] {
       --bg: #ffffff;
-      --surface: #f6f8fa;
-      --surface-2: #eaeef2;
-      --border: #d0d7de;
-      --text: #1f2328;
-      --muted: #59636e;
-      --accent: #1f883d;
-      --accent-hover: #1a7f37;
-      --accent-text: #1a7f37;
-      --link: #0969da;
-      --shadow: 0 12px 32px rgba(140, 149, 159, .3);
-      --l0: #ebedf0; --l1: #9be9a8; --l2: #40c463; --l3: #30a14e; --l4: #216e39;
-      --cell-edge: rgba(31, 35, 40, .06);
+      --surface: #ffffff;
+      --surface-2: #f5f3ff;
+      --border: rgba(196, 181, 253, 0.5);
+      --border-accent: rgba(124, 58, 237, 0.4);
+      --text: #1e1b4b;
+      --muted: #64748b;
+      --accent: linear-gradient(135deg, #4338CA 0%, #7C3AED 50%, #6366F1 100%);
+      --accent-solid: #6366F1;
+      --accent-hover: linear-gradient(135deg, #4F46E5 0%, #8B5CF6 50%, #818CF8 100%);
+      --accent-text: #6366f1;
+      --link: #4f46e5;
+      --link-hover: #4338ca;
+      --shadow: 0 12px 32px rgba(99, 102, 241, 0.08), 0 2px 8px rgba(124, 58, 237, 0.05);
+      --btn-glow: 0 0 16px rgba(124, 58, 237, 0.35), 0 4px 12px rgba(67, 56, 202, 0.25);
+      --btn-glow-hover: 0 0 24px rgba(124, 58, 237, 0.5), 0 6px 16px rgba(99, 102, 241, 0.35);
+      --l0: #f1f5f9; --l1: #e0e7ff; --l2: #c7d2fe; --l3: #818cf8; --l4: #4f46e5;
+      --cell-edge: rgba(196, 181, 253, 0.4);
     }
 
     *, *::before, *::after { box-sizing: border-box; }
@@ -83,21 +94,39 @@
     :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; border-radius: 6px; }
     .container { width: min(1200px, 100% - 48px); margin-inline: auto; }
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-    .skip { position: absolute; left: 12px; top: -60px; background: var(--accent); color: #fff; padding: 8px 14px; border-radius: 6px; z-index: 200; }
+    .skip { position: absolute; left: 12px; top: -60px; background: #4338ca; color: #fff; padding: 8px 14px; border-radius: 6px; z-index: 200; }
     .skip:focus { top: 12px; }
 
     /* ---------- Buttons ---------- */
     .btn {
       display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-      padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border);
+      padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border);
       background: var(--surface); font-weight: 600; font-size: 14px; line-height: 20px;
-      transition: background .15s, border-color .15s, transform .15s, box-shadow .15s;
+      color: var(--text);
+      transition: background .2s, border-color .2s, transform .2s, box-shadow .2s, filter .2s;
       white-space: nowrap;
     }
-    .btn:hover { background: var(--surface-2); border-color: var(--muted); }
+    .btn:hover {
+      background: var(--surface-2);
+      border-color: var(--border-accent);
+      box-shadow: 0 0 14px rgba(124, 58, 237, 0.25);
+      transform: translateY(-1px);
+    }
     .btn:active { transform: translateY(1px); }
-    .btn-primary { background: var(--accent); border-color: rgba(240, 246, 252, .1); color: #fff; }
-    .btn-primary:hover { background: var(--accent-hover); border-color: rgba(240, 246, 252, .2); box-shadow: 0 0 0 4px rgba(46, 160, 67, .2); }
+    .btn-primary {
+      background: var(--accent);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: #fff;
+      box-shadow: var(--btn-glow);
+      border-radius: 8px;
+    }
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      border-color: rgba(255, 255, 255, 0.3);
+      box-shadow: var(--btn-glow-hover);
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
     .btn-lg { padding: 12px 22px; font-size: 16px; line-height: 24px; border-radius: 8px; }
     .btn .arrow { transition: transform .2s; }
     .btn:hover .arrow { transform: translateX(3px); }
@@ -290,15 +319,15 @@
     .step-tab .extra { max-height: 0; overflow: hidden; opacity: 0; transition: max-height .35s, opacity .35s, margin .35s; }
     .step-tab[aria-selected="true"] .extra { max-height: 120px; opacity: 1; margin-top: 8px; }
 
-    .terminal { background: #010409; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; min-height: 320px; display: flex; flex-direction: column; box-shadow: var(--shadow); }
-    .term-bar { display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: #161b22; border-bottom: 1px solid #30363d; }
-    .term-bar i { width: 12px; height: 12px; border-radius: 50%; display: block; background: #484f58; }
-    .term-bar span { margin-left: 8px; font: 13px var(--mono); color: #8b949e; }
-    .term-body { padding: 20px; font: 14px/1.9 var(--mono); color: #e6edf3; overflow-x: auto; }
+    .terminal { background: #080B1A; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; min-height: 320px; display: flex; flex-direction: column; box-shadow: var(--shadow); }
+    .term-bar { display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: #10152B; border-bottom: 1px solid rgba(99, 102, 241, 0.2); }
+    .term-bar i { width: 12px; height: 12px; border-radius: 50%; display: block; background: #6366f1; opacity: 0.6; }
+    .term-bar span { margin-left: 8px; font: 13px var(--mono); color: var(--muted); }
+    .term-body { padding: 20px; font: 14px/1.9 var(--mono); color: var(--text); overflow-x: auto; }
     .term-line { white-space: pre; opacity: 0; animation: line .3s forwards; animation-delay: calc(var(--i) * 260ms); }
-    .term-line.cmd::before { content: "$ "; color: #3fb950; }
-    .term-line.out { color: #8b949e; }
-    .term-line.ok { color: #3fb950; }
+    .term-line.cmd::before { content: "$ "; color: var(--accent-text); }
+    .term-line.out { color: var(--muted); }
+    .term-line.ok { color: var(--link); }
     @keyframes line { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
     .caret { display: inline-block; width: 8px; height: 16px; background: #e6edf3; vertical-align: -3px; animation: blink 1s steps(1) infinite; }
     @keyframes blink { 50% { opacity: 0; } }
@@ -310,7 +339,11 @@
       background: var(--surface); border: 1px solid var(--border);
       transition: border-color .2s, transform .2s, box-shadow .2s;
     }
-    .card:hover { border-color: var(--link); transform: translateY(-3px); box-shadow: var(--shadow); }
+    .card:hover {
+      border-color: var(--border-accent);
+      transform: translateY(-3px);
+      box-shadow: 0 16px 36px rgba(8, 11, 26, 0.9), 0 0 20px rgba(124, 58, 237, 0.25);
+    }
     .card-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .repo { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--link); min-width: 0; }
     .repo span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -382,6 +415,7 @@
   </style>
 </head>
 <body>
+  <%- include('partials/sparkles-bg') %>
   <a class="skip" href="#main">Skip to content</a>
 
   <!-- ======================= NAVBAR ======================= -->
@@ -436,7 +470,7 @@
         <form class="search" action="<%= routes.search %>" method="get" role="search">
           <label class="sr-only" for="nav-search">Search projects and issues</label>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.8"/><path d="M10.6 10.6L14 14"/></svg>
-          <input id="nav-search" name="q" type="search" placeholder="Search projects and issues" autocomplete="off">
+          <input id="nav-search" name="q" type="search" placeholder="Search projects and issues..." autocomplete="off">
           <span class="kbd" aria-hidden="true">/</span>
         </form>
 
@@ -505,7 +539,7 @@
               <div class="finder-search">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.8"/><path d="M10.6 10.6L14 14"/></svg>
                 <label class="sr-only" for="issue-q">Filter issues</label>
-                <input id="issue-q" type="search" placeholder="Filter issues by keyword" autocomplete="off">
+                <input id="issue-q" type="search" placeholder="Filter issues by keyword or topic..." autocomplete="off">
               </div>
               <div class="chips" id="chips" role="group" aria-label="Filter by language"></div>
             </div>

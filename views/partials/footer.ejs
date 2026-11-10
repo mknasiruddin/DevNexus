@@ -1,0 +1,70 @@
+<footer class="dash-footer">
+  <div class="container">
+    <div class="dash-footer-content">
+      <div class="dash-footer-left">
+        <strong>DevNexus</strong> &mdash; Open-Source Contribution &amp; Collaboration Platform
+      </div>
+      <div class="dash-footer-right">
+        <a href="/">Home</a>
+        <span>&bull;</span>
+        <a href="/projects">Projects</a>
+        <span>&bull;</span>
+        <a href="/learn">Guide</a>
+        <span>&bull;</span>
+        <a href="/leaderboard">Leaderboard</a>
+        <span>&bull;</span>
+        <a href="/privacy">Privacy</a>
+        <span>&bull;</span>
+        <a href="/terms">Terms</a>
+      </div>
+    </div>
+  </div>
+</footer>
+<style>
+  .dash-footer {
+    border-top: 1px solid var(--border, rgba(99, 102, 241, 0.15));
+    padding: 24px 0;
+    margin-top: 48px;
+    font-size: 13px;
+    color: var(--muted, #94a3b8);
+  }
+  .dash-footer-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .dash-footer-left strong {
+    color: var(--text, #f1f5f9);
+  }
+  .dash-footer-right {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .dash-footer-right a {
+    color: var(--muted, #94a3b8);
+    text-decoration: none;
+    transition: color 0.15s ease;
+  }
+  .dash-footer-right a:hover {
+    color: var(--link, #818cf8);
+    text-decoration: underline;
+  }
+  .dash-footer-right span {
+    color: var(--border, rgba(99, 102, 241, 0.3));
+    font-size: 11px;
+  }
+  @media (max-width: 768px) {
+    .dash-footer-content {
+      flex-direction: column;
+      text-align: center;
+      gap: 10px;
+    }
+    .dash-footer-right {
+      justify-content: center;
+    }
+  }
+</style>

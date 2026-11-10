@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Explore Open Source Projects | DevNexus</title>
+  <meta name="description" content="Discover top open-source projects welcoming contributors. Filter by language, topic, and stars, and start making real contributions.">
+  <%- include('partials/theme-script') %>
+  <link rel="stylesheet" href="/css/sparkles.css">
+  <link rel="stylesheet" href="/css/projects.css">
+</head>
+<body>
+  <%- include('partials/sparkles-bg') %>
+
+  <!-- ======================= NAVBAR ======================= -->
+  <%- include('partials/dashboard-nav', { activePage: 'projects', siteName: 'DevNexus', user: locals.user || null, isAdmin: locals.isAdmin || false }) %>
+
+  <!-- ======================= MAIN CONTENT ======================= -->
+  <main class="dashboard-main" id="main">
+    <div class="container">
+
+      <!-- ======================= HERO SECTION ======================= -->
+      <section class="projects-hero">
+        <div class="projects-hero-inner">
+          <div class="projects-title-group">
+            <h1>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-text);">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                <line x1="8" y1="21" x2="16" y2="21"/>
+                <line x1="12" y1="17" x2="12" y2="21"/>
+              </svg>
+              Explore Open Source Projects
+            </h1>
+            <p>
+              Discover active community repositories powered by the official GitHub REST API.
+              Filter by tech stack, difficulty, and community activity to find your next open-source contribution.
+            </p>
+          </div>
+
+          <div class="projects-status-badges">
+            <span class="meta-pill live">
+              <span class="status-dot online"></span>
+              Live GitHub REST API v3
+            </span>
+            <% if (locals.cached) { %>
+              <span class="meta-pill" title="Optimized SQLite cache response">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                Cached Engine
+              </span>
+            <% } %>
+            <% if (locals.rateLimit) { %>
+              <span class="meta-pill <%= rateLimit.remaining < 10 ? 'rate-limit' : '' %>" title="Hourly GitHub rate limit quota">
+                Quota: <%= rateLimit.remaining %> / <%= rateLimit.limit %>
+              </span>
+            <% } %>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======================= RATE LIMIT OR ERROR WARNING ======================= -->
+      <% if (locals.error === 'RATE_LIMIT_EXCEEDED') { %>
+        <div class="dash-card" style="border-color: rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.08); margin-bottom: 24px;">
+          <div class="dash-card-body" style="display:flex; align-items:center; gap:16px;">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <div>
+              <strong style="color: #fbbf24; font-size: 15px; display: block; margin-bottom: 4px;">GitHub API Rate Limit Notice</strong>
+              <span style="font-size: 13.5px; color: var(--text);">
+                <%= errorMessage || 'Public anonymous search quota reached. Results will refresh as soon as GitHub resets the hourly window.' %>
+                <% if (!locals.user) { %>
+                  <a href="/login" style="color: var(--link); text-decoration: underline; margin-left: 6px; font-weight: 600;">Sign in with GitHub for higher rate limits &rarr;</a>
+                <% } %>
+              </span>
+            </div>
+          </div>
+        </div>
+      <% } %>
+
+      <!-- ======================= SEARCH & FILTER BAR ======================= -->
+      <section class="filter-box" aria-label="Repository search and filters">
+        <form action="/projects" method="GET" id="projects-filter-form">
+          <div class="filter-grid">
+
+            <!-- 1. Search Query -->
+            <div class="filter-field">
+              <label for="project-search-input">Search Repositories</label>
+              <div class="filter-input-wrap">
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.8"/><path d="M10.6 10.6L14 14"/></svg>
+                <input id="project-search-input" name="q" type="search" value="<%= activeQuery %>" placeholder="Keywords (e.g. react, algorithm, compiler)..." autocomplete="off">
+              </div>
+            </div>
+
+            <!-- 2. Programming Language -->
+            <div class="filter-field">
+              <label for="project-language-select">Language</label>
+              <select id="project-language-select" name="language" class="filter-select-custom" onchange="this.form.submit()">
+                <% availableLanguages.forEach(function(lang) { %>
+                  <option value="<%= lang.toLowerCase() %>" <%= activeLanguage.toLowerCase() === lang.toLowerCase() ? 'selected' : '' %>>
+                    <%= lang === 'All' ? 'All Languages' : lang %>
+                  </option>
+                <% }); %>
+              </select>
+            </div>
+
+            <!-- 3. Topic -->
+            <div class="filter-field">
+              <label for="project-topic-select">Topic</label>
+              <select id="project-topic-select" name="topic" class="filter-select-custom" onchange="this.form.submit()">
+                <% availableTopics.forEach(function(top) { %>
+                  <option value="<%= top.toLowerCase() %>" <%= activeTopic.toLowerCase() === top.toLowerCase() ? 'selected' : '' %>>
+                    <%= top === 'All' ? 'All Topics' : top %>
+                  </option>
+                <% }); %>
+              </select>
+            </div>
+
+            <!-- 4. Minimum Stars -->
+            <div class="filter-field">
+              <label for="project-stars-select">Min. Stars</label>
+              <select id="project-stars-select" name="stars" class="filter-select-custom" onchange="this.form.submit()">
+                <% starOptions.forEach(function(opt) { %>
+                  <option value="<%= opt.value %>" <%= activeStars === opt.value ? 'selected' : '' %>>
+                    <%= opt.label %>
+                  </option>
+                <% }); %>
+              </select>
+            </div>
+
+            <!-- 5. Sort Option -->
+            <div class="filter-field">
+              <label for="project-sort-select">Sort By</label>
+              <select id="project-sort-select" name="sort" class="filter-select-custom" onchange="this.form.submit()">
+                <% sortOptions.forEach(function(s) { %>
+                  <option value="<%= s.value %>" <%= activeSort === s.value ? 'selected' : '' %>>
+                    <%= s.label %>
+                  </option>
+                <% }); %>
+              </select>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="filter-actions">
+              <button type="submit" class="btn btn-primary" style="height: 38px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                Apply
+              </button>
+              <% if (activeQuery || (activeLanguage && activeLanguage !== 'all') || (activeTopic && activeTopic !== 'all') || activeStars > 0 || activeSort !== 'stars') { %>
+                <a href="/projects" class="btn" style="height: 38px;" title="Reset all search filters">
+                  Clear
+                </a>
+              <% } %>
+            </div>
+
+          </div>
+        </form>
+      </section>
+
+      <!-- ======================= ACTIVE FILTERS & COUNT BAR ======================= -->
+      <div class="active-filters-bar">
+        <div>
+          Showing <strong><%= repositories.length %></strong> of <strong><%= totalCount.toLocaleString() %></strong> repositories
+          <% if (activeQuery) { %> matching &ldquo;<span style="color:var(--text); font-weight:600;"><%= activeQuery %></span>&rdquo;<% } %>
+        </div>
+
+        <div class="active-chips">
+          <% if (activeLanguage && activeLanguage !== 'all') { %>
+            <span class="filter-chip">
+              Language: <%= activeLanguage %>
+              <a href="/projects?<%= new URLSearchParams({ q: activeQuery, topic: activeTopic, stars: activeStars, sort: activeSort }).toString() %>" title="Remove language filter">&times;</a>
+            </span>
+          <% } %>
+
+          <% if (activeTopic && activeTopic !== 'all') { %>
+            <span class="filter-chip">
+              Topic: <%= activeTopic %>
+              <a href="/projects?<%= new URLSearchParams({ q: activeQuery, language: activeLanguage, stars: activeStars, sort: activeSort }).toString() %>" title="Remove topic filter">&times;</a>
+            </span>
+          <% } %>
+
+          <% if (activeStars > 0) { %>
+            <span class="filter-chip">
+              Stars: &ge;<%= activeStars %>
+              <a href="/projects?<%= new URLSearchParams({ q: activeQuery, language: activeLanguage, topic: activeTopic, sort: activeSort }).toString() %>" title="Remove stars filter">&times;</a>
+            </span>
+          <% } %>
+        </div>
+      </div>
+
+      <!-- ======================= REPOSITORY GRID ======================= -->
+      <% if (repositories.length === 0) { %>
+        <!-- Empty State -->
+        <div class="dash-card">
+          <div class="dash-card-body" style="text-align: center; padding: 60px 20px;">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--muted); margin-bottom: 16px;">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <h3 style="margin: 0 0 8px; font-size: 18px; color: var(--text);">No repositories matched your filters</h3>
+            <p style="margin: 0 auto 20px; color: var(--muted); font-size: 14px; max-width: 44ch;">
+              Try broadening your keyword, selecting &ldquo;All Languages&rdquo;, or lowering the minimum stars threshold.
+            </p>
+            <a href="/projects" class="btn btn-primary">
+              Reset All Filters
+            </a>
+          </div>
+        </div>
+      <% } else { %>
+        <div class="repo-grid">
+          <% repositories.forEach(function(repo) { %>
+            <article class="repo-card">
+
+              <!-- Top identity -->
+              <div>
+                <div class="repo-card-head">
+                  <div class="repo-owner-wrap">
+                    <img class="repo-owner-avatar" src="<%= repo.owner.avatarUrl %>" alt="<%= repo.owner.login %> avatar" loading="lazy" width="36" height="36">
+                    <div class="repo-identity">
+                      <div class="repo-owner-name">@<%= repo.owner.login %></div>
+                      <a class="repo-title-link" href="<%= repo.htmlUrl %>" target="_blank" rel="noopener noreferrer" title="<%= repo.fullName %>">
+                        <%= repo.name %>
+                      </a>
+                    </div>
+                  </div>
+
+                  <a class="meta-pill" href="<%= repo.htmlUrl %>/stargazers" target="_blank" rel="noopener noreferrer" title="<%= repo.stars.toLocaleString() %> stars">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="color:#fbbf24;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                    <%= repo.stars.toLocaleString() %>
+                  </a>
+                </div>
+
+                <!-- Description -->
+                <p class="repo-desc" title="<%= repo.description %>">
+                  <%= repo.description %>
+                </p>
+
+                <!-- Topics list -->
+                <div class="repo-topics">
+                  <% if (repo.topics && repo.topics.length > 0) { %>
+                    <% repo.topics.forEach(function(topicName) { %>
+                      <a href="/projects?topic=<%= encodeURIComponent(topicName) %>" class="topic-tag" title="Browse <%= topicName %> projects">
+                        #<%= topicName %>
+                      </a>
+                    <% }); %>
+                  <% } else { %>
+                    <span style="font-size: 11.5px; color: var(--muted); align-self: center;">General open source</span>
+                  <% } %>
+                </div>
+              </div>
+
+              <!-- Metrics & Links -->
+              <div>
+                <div class="repo-metrics">
+                  <div class="repo-metric-item" title="Primary Language">
+                    <span class="lang-dot" style="background-color: <%= repo.languageColor %>;"></span>
+                    <span><%= repo.language %></span>
+                  </div>
+
+                  <div class="repo-metric-item" title="Forks count">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+                    <span><%= repo.forks.toLocaleString() %></span>
+                  </div>
+
+                  <div class="repo-metric-item" title="Open issues">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2"/></svg>
+                    <span><%= repo.openIssues.toLocaleString() %> issues</span>
+                  </div>
+
+                  <div class="repo-metric-item" style="margin-left: auto;" title="Last updated">
+                    <span><%= repo.updatedAt %></span>
+                  </div>
+                </div>
+
+                <div class="repo-actions">
+                  <a href="<%= repo.htmlUrl %>" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="font-size: 13px;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                    View on GitHub
+                  </a>
+
+                  <a href="/dashboard?username=<%= encodeURIComponent(repo.owner.login) %>&q=<%= encodeURIComponent(repo.name) %>" class="btn" style="font-size: 13px;" title="Inspect issues in Developer Dashboard">
+                    Inspect
+                  </a>
+                </div>
+              </div>
+
+            </article>
+          <% }); %>
+        </div>
+
+        <!-- ======================= PAGINATION CONTROLS ======================= -->
+        <% if (totalPages > 1) { %>
+          <%
+            function pageUrl(p) {
+              const params = new URLSearchParams();
+              if (activeQuery) params.set('q', activeQuery);
+              if (activeLanguage && activeLanguage !== 'all') params.set('language', activeLanguage);
+              if (activeTopic && activeTopic !== 'all') params.set('topic', activeTopic);
+              if (activeStars > 0) params.set('stars', activeStars);
+              if (activeSort && activeSort !== 'stars') params.set('sort', activeSort);
+              params.set('page', p);
+              return '/projects?' + params.toString();
+            }
+          %>
+          <nav class="pagination-wrap" aria-label="Repository pagination">
+            <% if (page > 1) { %>
+              <a href="<%= pageUrl(page - 1) %>" class="pagination-btn">
+                &larr; Previous
+              </a>
+            <% } else { %>
+              <span class="pagination-btn disabled">&larr; Previous</span>
+            <% } %>
+
+            <span class="pagination-info">
+              Page <strong><%= page %></strong> of <strong><%= totalPages %></strong>
+            </span>
+
+            <% if (page < totalPages) { %>
+              <a href="<%= pageUrl(page + 1) %>" class="pagination-btn">
+                Next &rarr;
+              </a>
+            <% } else { %>
+              <span class="pagination-btn disabled">Next &rarr;</span>
+            <% } %>
+          </nav>
+        <% } %>
+
+      <% } %>
+
+    </div>
+  </main>
+
+  <!-- ======================= FOOTER ======================= -->
+  <%- include('partials/footer') %>
+</body>
+</html>

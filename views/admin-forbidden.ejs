@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>403 Forbidden | DevNexus Administrative Gateway</title>
+  <meta name="description" content="Access Restricted - Administrator authentication required.">
+  <%- include('partials/theme-script') %>
+  <link rel="stylesheet" href="/css/sparkles.css">
+  <link rel="stylesheet" href="/css/admin.css">
+</head>
+<body>
+  <%- include('partials/sparkles-bg') %>
+
+  <!-- ======================= NAVBAR ======================= -->
+  <%- include('partials/dashboard-nav', { activePage: 'admin', siteName: 'DevNexus' }) %>
+
+  <!-- ======================= MAIN 403 CONTENT ======================= -->
+  <main class="dashboard-main" style="display: flex; align-items: center; justify-content: center;">
+    <div class="container">
+      <div class="auth-box">
+        <div class="auth-icon-wrap">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+
+        <h2>403 Forbidden</h2>
+        <p>
+          Administrative routes on <strong>DevNexus</strong> require verified server-side session authorization.
+          Access is not granted merely by requesting this URL or supplying client-side parameters.
+        </p>
+
+        <% if (locals.error) { %>
+          <div class="error-banner" style="margin-bottom: 16px; text-align: left;">
+            <span><%= error %></span>
+          </div>
+        <% } %>
+
+        <form class="auth-form" action="/admin/login" method="POST">
+          <div class="auth-input-group">
+            <label for="adminUsername">Administrator Username</label>
+            <input type="text" id="adminUsername" name="username" placeholder="your-admin-username" required autocomplete="username">
+          </div>
+
+          <div class="auth-input-group">
+            <label for="adminPassword">Administrator Password</label>
+            <input type="password" id="adminPassword" name="password" placeholder="Enter administrator password" required autocomplete="current-password">
+          </div>
+
+          <button type="submit" class="btn btn-primary" style="width: 100%; height: 40px; margin-top: 6px;">
+            Authenticate as Administrator
+          </button>
+        </form>
+
+        <div class="auth-helper" style="border-top: 1px solid var(--border); padding-top: 16px; margin-top: 20px; display: flex; justify-content: space-between; align-items: center;">
+          <a href="/" style="color: var(--muted); font-size: 13px; text-decoration: none;">&larr; Back to Home</a>
+          <a href="/dashboard" style="color: var(--link); font-size: 13px; text-decoration: none;">Developer Dashboard &rarr;</a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>

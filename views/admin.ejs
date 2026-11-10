@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin Dashboard | DevNexus</title>
+  <meta name="description" content="DevNexus Administrative Platform - Real SQLite database records and live process diagnostics.">
+  <%- include('partials/theme-script') %>
+  <link rel="stylesheet" href="/css/sparkles.css">
+  <link rel="stylesheet" href="/css/admin.css">
+</head>
+<body>
+  <%- include('partials/sparkles-bg') %>
+
+  <!-- ======================= NAVBAR ======================= -->
+  <%- include('partials/dashboard-nav', { activePage: 'admin', siteName: 'DevNexus', isAdmin: true }) %>
+
+  <!-- ======================= REAL DATA DISCLOSURE BANNER ======================= -->
+  <aside class="disclosure-banner" aria-label="Administrative notice">
+    <div class="container disclosure-inner">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span class="disclosure-badge">Server Authorized</span>
+        <span>Administrator: <strong><%= currentUser.username %></strong> (<%= currentUser.email %>) &bull; Session verified by SQLite</span>
+      </div>
+      <div>
+        <span>Storage: <strong>Persistent SQLite Engine</strong> (<code>data/devnexus.sqlite</code>)</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ======================= MAIN ADMIN CONTENT ======================= -->
+  <main class="dashboard-main" id="main">
+    <div class="container">
+
+      <!-- Header Title & Controls -->
+      <div class="admin-header">
+        <div class="admin-title-group">
+          <h1>Platform Administration &amp; System Health</h1>
+          <p class="admin-subtitle">Live database records, registered developer governance, and Node.js process diagnostics.</p>
+        </div>
+        <div class="admin-controls">
+          <a href="/admin/logout" class="btn btn-sm">Sign Out</a>
+          <a href="/dashboard" class="btn btn-sm btn-primary">Developer Dashboard &rarr;</a>
+        </div>
+      </div>
+
+      <!-- ======================= LIVE PROCESS DIAGNOSTICS ======================= -->
+      <div class="dash-card">
+        <div class="dash-card-header">
+          <h3 class="dash-card-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            Live Server Process Health
+          </h3>
+          <span style="font-size: 12px; color: var(--muted);"><%= dataSources.system %></span>
+        </div>
+        <div class="dash-card-body">
+          <div class="system-status-grid">
+            <div class="diag-card">
+              <div class="diag-label">Runtime Engine</div>
+              <div class="diag-value">Node.js <%= systemStatus.nodeVersion %></div>
+              <span class="diag-pill live">&bull; Live Process</span>
+            </div>
+
+            <div class="diag-card">
+              <div class="diag-label">Host OS &amp; Arch</div>
+              <div class="diag-value"><%= systemStatus.platform %></div>
+              <span class="diag-pill live">&bull; Verified</span>
+            </div>
+
+            <div class="diag-card">
+              <div class="diag-label">Process Uptime</div>
+              <div class="diag-value"><%= systemStatus.uptime %></div>
+              <span class="diag-pill live">&bull; Serving Requests</span>
+            </div>
+
+            <div class="diag-card">
+              <div class="diag-label">Heap Memory</div>
+              <div class="diag-value"><%= systemStatus.heapUsed %> / <%= systemStatus.heapTotal %></div>
+              <span class="diag-pill live">&bull; Live Heap</span>
+            </div>
+
+            <div class="diag-card">
+              <div class="diag-label">Database Store</div>
+              <div class="diag-value">SQLite (ACID)</div>
+              <span class="diag-pill live">&bull; Persistent File</span>
+            </div>
+
+            <div class="diag-card">
+              <div class="diag-label">API Gateway</div>
+              <div class="diag-value">GitHub REST v3</div>
+              <span class="diag-pill live">&bull; Active Handler</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ======================= DATABASE METRICS ======================= -->
+      <div class="metrics-row">
+        <div class="metric-card">
+          <div class="metric-title">Registered Accounts</div>
+          <div class="metric-val"><%= userStats.total %></div>
+          <div class="metric-sub">Stored in SQLite users table</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-title">Total Saved Bookmarks</div>
+          <div class="metric-val"><%= bookmarkStats.total %></div>
+          <div class="metric-sub">Stored in SQLite bookmarks table</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-title">Logged Platform Events</div>
+          <div class="metric-val"><%= activities.length %></div>
+          <div class="metric-sub">Audited in activity_logs table</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-title">Active Administrators</div>
+          <div class="metric-val">
+            <%= (userStats.byRole.find(r => r.role === 'admin') || { count: 1 }).count %>
+          </div>
+          <div class="metric-sub">Verified role-based credentials</div>
+        </div>
+      </div>
+
+      <!-- ======================= POPULAR BOOKMARKED REPOSITORIES ======================= -->
+      <div class="dash-card">
+        <div class="dash-card-header">
+          <h3 class="dash-card-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+            Most Bookmarked Repositories on Platform
+          </h3>
+          <span style="font-size:12px; color:var(--muted);"><%= dataSources.bookmarks %></span>
+        </div>
+        <div class="dash-card-body">
+          <% if (bookmarkStats.topRepos.length === 0) { %>
+            <p style="color:var(--muted); font-size:13.5px;">No bookmarks recorded in the database yet. Discovered issues saved by contributors will appear here.</p>
+          <% } else { %>
+            <div class="dist-list">
+              <% bookmarkStats.topRepos.forEach(function(repo) { %>
+                <div class="dist-item">
+                  <div class="dist-item-head">
+                    <span style="font-weight:600; color:var(--link);"><%= repo.repo_name %></span>
+                    <span><strong><%= repo.count %></strong> bookmark<%= repo.count > 1 ? 's' : '' %></span>
+                  </div>
+                  <div class="dist-bar-bg">
+                    <div class="dist-bar-fill" style="width: <%= Math.min(100, (repo.count / Math.max(1, bookmarkStats.total)) * 100) %>%; background-color: var(--accent);"></div>
+                  </div>
+                </div>
+              <% }); %>
+            </div>
+          <% } %>
+        </div>
+      </div>
+
+      <!-- ======================= USER MANAGEMENT INTERFACE ======================= -->
+      <div class="dash-card">
+        <div class="dash-card-header">
+          <h3 class="dash-card-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+            Registered Developer Governance
+          </h3>
+          <div class="filter-search" style="min-width: 240px;">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.8"/><path d="M10.6 10.6L14 14"/></svg>
+            <input id="admin-user-search" type="search" placeholder="Filter registered developers by name or handle..." aria-label="Filter registered developers" autocomplete="off">
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Developer Account</th>
+                <th>Role</th>
+                <th>Experience</th>
+                <th>Registration Date</th>
+                <th>Status</th>
+                <th style="text-align: right;">Administrative Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% users.forEach(function(u) { %>
+                <tr class="user-table-row" data-user-id="<%= u.id %>">
+                  <td>
+                    <div class="user-cell">
+                      <% if (u.avatar_url) { %>
+                        <img class="user-avatar-sm" src="<%= u.avatar_url %>" alt="<%= u.username %> avatar">
+                      <% } else { %>
+                        <div class="user-avatar-sm" style="display:grid; place-items:center; background:var(--surface-2); font-weight:700;">
+                          <%= (u.username || 'U').charAt(0).toUpperCase() %>
+                        </div>
+                      <% } %>
+                      <div>
+                        <div class="user-name-strong"><%= u.name || u.username %></div>
+                        <div class="user-handle-sub">
+                          @<%= u.username %>
+                          <% if (u.email) { %> &bull; <%= u.email %><% } %>
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+
+                  <td>
+                    <select class="filter-select user-role-select" data-user-id="<%= u.id %>" <%= u.id === currentUser.id ? 'disabled title="You cannot demote yourself"' : '' %>>
+                      <option value="contributor" <%= u.role === 'contributor' ? 'selected' : '' %>>contributor</option>
+                      <option value="maintainer" <%= u.role === 'maintainer' ? 'selected' : '' %>>maintainer</option>
+                      <option value="admin" <%= u.role === 'admin' ? 'selected' : '' %>>admin</option>
+                    </select>
+                  </td>
+
+                  <td><span class="level-badge <%= (u.experience_level || 'intermediate').toLowerCase() %>" style="font-size:11px; padding:2px 8px;"><%= u.experience_level || 'Intermediate' %></span></td>
+
+                  <td><%= new Date(u.created_at).toLocaleDateString() %></td>
+
+                  <td>
+                    <span class="status-badge user-status-badge <%= u.status === 'active' ? 'active' : 'pending' %>">
+                      &bull; <%= u.status %>
+                    </span>
+                  </td>
+
+                  <td style="text-align: right;">
+                    <% if (u.id !== currentUser.id) { %>
+                      <button class="btn btn-sm user-toggle-btn" data-user-id="<%= u.id %>" type="button">
+                        <%= u.status === 'active' ? 'Suspend' : 'Activate' %>
+                      </button>
+                    <% } else { %>
+                      <span style="font-size: 11px; color: var(--muted);">(Current Session)</span>
+                    <% } %>
+                  </td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ======================= RECENT AUDIT LOGS ======================= -->
+      <div class="dash-card">
+        <div class="dash-card-header">
+          <h3 class="dash-card-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Recent Application Audit Log
+          </h3>
+          <span style="font-size:12px; color:var(--muted);"><%= dataSources.activity %></span>
+        </div>
+        <div class="table-responsive">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Action</th>
+                <th>Target</th>
+                <th>Details</th>
+                <th>Actor</th>
+                <th>Timestamp</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% if (activities.length === 0) { %>
+                <tr><td colspan="5" style="text-align:center; color:var(--muted);">No application events logged yet.</td></tr>
+              <% } else { %>
+                <% activities.forEach(function(act) { %>
+                  <tr>
+                    <td><strong><%= act.action %></strong></td>
+                    <td><code><%= act.target || '-' %></code></td>
+                    <td style="max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><%= act.details %></td>
+                    <td><%= act.username ? '@' + act.username : 'System' %></td>
+                    <td><%= new Date(act.created_at).toLocaleString() %></td>
+                  </tr>
+                <% }); %>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ======================= FOOTER ======================= -->
+  <%- include('partials/footer') %>
+
+  <!-- Toast -->
+  <div class="toast" id="toast" role="status" aria-live="polite">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.2 3L13 4.5"/></svg>
+    <span id="toast-msg"></span>
+  </div>
+
+  <script src="/js/admin.js"></script>
+</body>
+</html>

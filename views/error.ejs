@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= locals.title || 'Error' %> | DevNexus</title>
+  <%- include('partials/theme-script') %>
+  <link rel="stylesheet" href="/css/sparkles.css">
+  <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+  <%- include('partials/sparkles-bg') %>
+  <%- include('partials/dashboard-nav', { activePage: '', siteName: 'DevNexus' }) %>
+
+  <main class="dashboard-main" style="display: flex; align-items: center; justify-content: center;">
+    <div class="container" style="max-width: 520px;">
+      <div class="state-box" style="background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:36px 28px;">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#f85149" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <h2 style="margin: 12px 0 8px;"><%= locals.title || 'Operation Failed' %></h2>
+        <p style="color:var(--muted); margin-bottom: 24px;"><%= locals.message || 'An unexpected error occurred.' %></p>
+        <a href="<%= locals.actionUrl || '/' %>" class="btn btn-primary"><%= locals.actionText || 'Return Home' %></a>
+      </div>
+    </div>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>

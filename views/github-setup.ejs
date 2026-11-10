@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GitHub OAuth Configuration | DevNexus</title>
+  <%- include('partials/theme-script') %>
+  <link rel="stylesheet" href="/css/sparkles.css">
+  <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+  <%- include('partials/sparkles-bg') %>
+  <%- include('partials/dashboard-nav', { activePage: 'dashboard', siteName: 'DevNexus', user: locals.user || null, isAdmin: locals.isAdmin || false }) %>
+
+  <main class="dashboard-main" style="display: flex; align-items: center; justify-content: center; min-height: 75vh; padding: 40px 0;">
+    <div class="container" style="max-width: 680px;">
+      <div class="dash-card">
+        <div class="dash-card-header">
+          <h2 class="dash-card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+            GitHub OAuth Application Configuration
+          </h2>
+        </div>
+        <div class="dash-card-body" style="font-size: 14.5px; line-height: 1.6;">
+
+          <!-- Explicit Configuration Error Banner -->
+          <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <div>
+              <strong>OAuth Not Configured:</strong>
+              <span>GitHub OAuth credentials (<code>GITHUB_CLIENT_ID</code> and <code>GITHUB_CLIENT_SECRET</code>) must be defined in your <code>.env</code> file.</span>
+            </div>
+          </div>
+
+          <p>
+            To enable real GitHub authentication and OAuth token exchange, register an OAuth application on your GitHub developer account:
+          </p>
+
+          <ol style="margin: 16px 0; padding-left: 20px; display: grid; gap: 8px;">
+            <li>Go to <a href="https://github.com/settings/developers" target="_blank" rel="noopener noreferrer" style="color:var(--link); text-decoration: underline;">GitHub Developer Settings &rarr; OAuth Apps</a>.</li>
+            <li>Click <strong>New OAuth App</strong>.</li>
+            <li>Configure the application:
+              <ul style="margin-top: 6px;">
+                <li><strong>Application name:</strong> DevNexus</li>
+                <li><strong>Homepage URL:</strong> <code><%= locals.homepageUrl || 'http://localhost:3000/' %></code></li>
+                <li><strong>Authorization callback URL:</strong> <code><%= callbackUrl %></code></li>
+              </ul>
+            </li>
+            <li>Click <strong>Register application</strong> and generate a Client Secret.</li>
+            <li>Add the generated credentials to your <code>.env</code> file:
+              <pre style="background:var(--bg); border:1px solid var(--border); padding:10px 14px; border-radius:6px; font-family:var(--mono); font-size:13px; margin: 8px 0;">PORT=<%= locals.homepageUrl ? (new URL(locals.homepageUrl).port || '3000') : '3000' %>
+GITHUB_CLIENT_ID=your_github_client_id
+GITHUB_CLIENT_SECRET=your_github_client_secret
+GITHUB_CALLBACK_URL=<%= callbackUrl %></pre>
+            </li>
+          </ol>
+
+          <!-- Safe Navigation Options (Misleading Live Public API bypass removed) -->
+          <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+              <a href="/projects" class="btn btn-primary" title="Explore open-source repositories without signing in">
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" style="margin-right: 6px;"><path d="M2 3.5A1.5 1.5 0 0 1 3.5 2h9A1.5 1.5 0 0 1 14 3.5v9a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 12.5v-9z"/><path d="M6 2v12M2 6h12"/></svg>
+                Browse Public Repositories
+              </a>
+              <a href="/auth/login" class="btn" title="Sign in using username and password">
+                &larr; Sign In with Credentials
+              </a>
+            </div>
+            <a href="/" class="btn">
+              Back to Home
+            </a>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>

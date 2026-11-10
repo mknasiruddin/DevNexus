@@ -1,0 +1,377 @@
+<%
+  const currentMode = locals.mode === 'signup' ? 'signup' : 'login';
+%>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= currentMode === 'signup' ? 'Create an Account' : 'Sign In' %> | DevNexus</title>
+  <meta name="description" content="Sign in or create your DevNexus account to discover curated open source contributions.">
+  <%- include('partials/theme-script') %>
+  <link rel="stylesheet" href="/css/sparkles.css">
+  <link rel="stylesheet" href="/css/dashboard.css">
+  <style>
+    .auth-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 36px 32px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+      position: relative;
+    }
+    .auth-tab-bar {
+      display: flex;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 3px;
+      margin-bottom: 24px;
+      gap: 3px;
+    }
+    .auth-tab-link {
+      flex: 1;
+      text-align: center;
+      padding: 8px 14px;
+      font-size: 13.5px;
+      font-weight: 600;
+      border-radius: 6px;
+      color: var(--muted);
+      transition: all .18s;
+      display: block;
+      text-decoration: none;
+    }
+    .auth-tab-link:hover {
+      color: var(--text);
+    }
+    .auth-tab-link.active {
+      background: linear-gradient(135deg, #4338CA 0%, #7C3AED 100%);
+      color: #fff;
+      box-shadow: 0 2px 10px rgba(124, 58, 237, 0.35);
+    }
+    .auth-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 20px 0;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+    .auth-divider::before,
+    .auth-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+    .auth-field {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 16px;
+      text-align: left;
+    }
+    .auth-field label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .auth-field input {
+      width: 100%;
+      height: 42px;
+      padding: 0 14px;
+      font: inherit;
+      font-size: 14px;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .auth-field input:focus {
+      border-color: var(--border-accent);
+      box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.25);
+    }
+    .auth-field input::placeholder {
+      color: var(--muted);
+      opacity: 0.75;
+    }
+    .auth-field .field-hint {
+      font-size: 11.5px;
+      color: var(--muted);
+    }
+    .oauth-btn-wrap {
+      margin-bottom: 16px;
+    }
+    .oauth-btn {
+      width: 100%;
+      height: 44px;
+      font-size: 15px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      background: linear-gradient(135deg, #4338CA 0%, #7C3AED 50%, #6366F1 100%);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      text-decoration: none;
+      transition: filter 0.2s, transform 0.2s;
+      box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35);
+    }
+    .oauth-btn:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+    .oauth-subtext {
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 8px;
+      line-height: 1.4;
+    }
+    .demo-collapsible {
+      margin-top: 18px;
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 12.5px;
+      background: color-mix(in srgb, var(--surface-2) 60%, transparent);
+    }
+    .demo-collapsible summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--link);
+      outline: none;
+    }
+    .demo-collapsible summary:hover {
+      text-decoration: underline;
+    }
+    .forgot-box {
+      display: none;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 16px;
+    }
+    .alert-banner {
+      padding: 11px 14px;
+      border-radius: 8px;
+      margin-bottom: 18px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .alert-error {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #f87171;
+    }
+    .alert-success {
+      background: rgba(34, 197, 94, 0.15);
+      border: 1px solid rgba(34, 197, 94, 0.35);
+      color: #4ade80;
+    }
+    .legal-footer {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+    .legal-footer a {
+      color: var(--muted);
+      text-decoration: none;
+    }
+    .legal-footer a:hover {
+      color: var(--text);
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <%- include('partials/sparkles-bg') %>
+
+  <!-- ======================= NAVBAR ======================= -->
+  <%- include('partials/dashboard-nav', { activePage: currentMode === 'signup' ? 'signup' : 'login', siteName: 'DevNexus', user: locals.user || null, isAdmin: locals.isAdmin || false }) %>
+
+  <!-- ======================= MAIN LOGIN & SIGNUP CARD ======================= -->
+  <main class="dashboard-main" style="display: flex; align-items: center; justify-content: center; min-height: 75vh; padding: 40px 0;">
+    <div class="container" style="max-width: 480px;">
+      <div class="auth-card">
+
+        <!-- Header & Logo -->
+        <div style="text-align: center; margin-bottom: 22px;">
+          <a class="logo" href="/" style="justify-content: center; margin-bottom: 12px; font-size: 26px;">
+            <svg width="34" height="34" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+              <circle cx="9" cy="7" r="3.2"/><circle cx="9" cy="25" r="3.2"/><circle cx="23" cy="13" r="3.2"/>
+              <path d="M9 10.2v11.6M23 16.2c0 5-5 5-11 7.2"/>
+            </svg>
+            DevNexus
+          </a>
+          <h1 style="margin: 0 0 6px; font-size: 23px; font-weight: 800; color: var(--text);">
+            <%= currentMode === 'signup' ? 'Create Your Account' : 'Welcome to DevNexus' %>
+          </h1>
+          <p style="margin: 0; font-size: 14px; color: var(--muted); line-height: 1.5;">
+            <%= currentMode === 'signup'
+              ? 'Join open-source developers discovering good-first-issues tailored to your stack.'
+              : 'Sign in to continue your open-source journey.' %>
+          </p>
+        </div>
+
+        <!-- Mode Toggle Tabs (Sign In vs Create Account) -->
+        <nav class="auth-tab-bar" aria-label="Authentication mode selection">
+          <a class="auth-tab-link <%= currentMode === 'login' ? 'active' : '' %>" href="/login">
+            Sign In
+          </a>
+          <a class="auth-tab-link <%= currentMode === 'signup' ? 'active' : '' %>" href="/signup">
+            Create Account
+          </a>
+        </nav>
+
+        <!-- Error & Success Banners -->
+        <% if (locals.error) { %>
+          <div class="alert-banner alert-error" role="alert">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span><%= error %></span>
+          </div>
+        <% } %>
+
+        <% if (locals.success) { %>
+          <div class="alert-banner alert-success" role="status">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+            <span><%= success %></span>
+          </div>
+        <% } %>
+
+        <!-- GitHub OAuth One-Click Action -->
+        <div class="oauth-btn-wrap">
+          <a href="/auth/github" class="oauth-btn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+            <span><%= currentMode === 'signup' ? 'Sign up with GitHub' : 'Continue with GitHub' %></span>
+          </a>
+          <p class="oauth-subtext">
+            Secure authentication powered by GitHub OAuth.
+          </p>
+        </div>
+
+        <div class="auth-divider">
+          <span>or with credentials</span>
+        </div>
+
+        <% if (currentMode === 'signup') { %>
+          <!-- =================== SIGN UP FORM =================== -->
+          <form action="/signup" method="POST">
+            <div class="auth-field">
+              <label for="reg-username">Username</label>
+              <input type="text" id="reg-username" name="username" placeholder="your-github-username" autocomplete="username" required>
+              <span class="field-hint">Alphanumeric, hyphens and underscores allowed</span>
+            </div>
+
+            <div class="auth-field">
+              <label for="reg-email">Work or Personal Email</label>
+              <input type="email" id="reg-email" name="email" placeholder="name@company.com" autocomplete="email" required>
+            </div>
+
+            <div class="auth-field">
+              <label for="reg-password">Password</label>
+              <input type="password" id="reg-password" name="password" placeholder="Enter your password (min. 6 characters)" autocomplete="new-password" required minlength="6">
+            </div>
+
+            <div class="auth-field">
+              <label for="reg-confirm">Confirm Password</label>
+              <input type="password" id="reg-confirm" name="confirmPassword" placeholder="Confirm your password" autocomplete="new-password" required minlength="6">
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="width: 100%; height: 42px; margin-top: 6px; font-size: 14.5px;">
+              Create Developer Account &rarr;
+            </button>
+          </form>
+        <% } else { %>
+          <!-- =================== SIGN IN FORM =================== -->
+          <div id="forgot-password-box" class="forgot-box">
+            <h3 style="margin: 0 0 6px; font-size: 14px; font-weight: 700; color: var(--text);">Password Assistance</h3>
+            <p style="margin: 0 0 10px; font-size: 12px; color: var(--muted); line-height: 1.4;">
+              Enter your registered username or email address below. You can also sign in instantly using GitHub OAuth.
+            </p>
+            <form action="/forgot-password" method="POST" style="display: flex; gap: 8px;">
+              <input type="text" name="identifier" placeholder="your-github-username or name@company.com" required style="flex:1; height:36px; padding:0 10px; font-size:13px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); outline:none;">
+              <button type="submit" class="btn btn-sm btn-primary" style="font-size: 12.5px;">Send Reset</button>
+            </form>
+          </div>
+
+          <form action="/login" method="POST">
+            <div class="auth-field">
+              <label for="login-username">Username or Email</label>
+              <input type="text" id="login-username" name="username" placeholder="your-github-username or name@company.com" autocomplete="username" required>
+            </div>
+
+            <div class="auth-field">
+              <div style="display:flex; justify-content:space-between; align-items:baseline;">
+                <label for="login-password">Password</label>
+                <a href="#forgot" onclick="toggleForgot(event)" style="font-size: 12px; color: var(--link); text-decoration: none;">Forgot password?</a>
+              </div>
+              <input type="password" id="login-password" name="password" placeholder="Enter your password" autocomplete="current-password" required>
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="width: 100%; height: 42px; margin-top: 6px; font-size: 14.5px;">
+              Sign In to DevNexus &rarr;
+            </button>
+          </form>
+
+          <!-- Local Student Demo / Offline Collapsible -->
+          <details class="demo-collapsible">
+            <summary>Testing locally? Use Student Demo Sign-In</summary>
+            <form action="/auth/demo-login" method="POST" style="margin-top: 10px; display: grid; gap: 8px;">
+              <span style="font-size: 11.5px; color: var(--muted);">Quickly sign in with any GitHub username to simulate contributor profiles:</span>
+              <div style="display: flex; gap: 6px;">
+                <input type="text" name="username" placeholder="your-github-username" aria-label="GitHub username for demo" required style="flex:1; height:32px; padding:0 8px; font-size:12.5px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); outline:none;">
+                <button type="submit" class="btn btn-sm" style="font-size: 12px;">Demo Login</button>
+              </div>
+            </form>
+          </details>
+        <% } %>
+
+        <!-- Footer / Gateway Links -->
+        <div style="text-align: center; border-top: 1px solid var(--border); padding-top: 18px; margin-top: 24px; font-size: 13px; color: var(--muted); display: grid; gap: 8px;">
+          <div>
+            <% if (currentMode === 'signup') { %>
+              Already have an account? <a href="/login" style="color: var(--link); font-weight: 600;">Sign in here</a>
+            <% } else { %>
+              New to DevNexus? <a href="/signup" style="color: var(--link); font-weight: 600;">Create an account</a>
+            <% } %>
+          </div>
+          <div>
+            Platform Administrator? <a href="/admin/login" style="color: var(--link); font-weight: 500;">Admin Sign In &rarr;</a>
+          </div>
+          <div style="margin-top: 4px;">
+            <a href="/" style="color: var(--muted); font-size: 12px;">&larr; Back to Home</a>
+          </div>
+          <div class="legal-footer">
+            <a href="/privacy">Privacy Policy</a>
+            <span>&bull;</span>
+            <a href="/terms">Terms of Service</a>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <script>
+    function toggleForgot(e) {
+      if (e) e.preventDefault();
+      var box = document.getElementById('forgot-password-box');
+      if (box) {
+        box.style.display = box.style.display === 'block' ? 'none' : 'block';
+      }
+    }
+  </script>
+</body>
+</html>

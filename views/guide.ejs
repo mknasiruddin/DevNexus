@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Open-Source Contribution Guide | DevNexus</title>
+  <meta name="description" content="Step-by-step contribution guide for first-time open source developers. Learn how to discover repositories, find good first issues, and make your first pull request.">
+  <%- include('partials/theme-script') %>
+  <link rel="stylesheet" href="/css/sparkles.css">
+  <link rel="stylesheet" href="/css/dashboard.css">
+  <style>
+    .guide-header {
+      padding: 36px 0 24px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+      text-align: center;
+    }
+    .guide-header h1 {
+      margin: 0 0 10px;
+      font-size: clamp(24px, 4vw, 34px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+    .guide-header p {
+      margin: 0 auto;
+      font-size: 16px;
+      color: var(--muted);
+      max-width: 62ch;
+      line-height: 1.5;
+    }
+
+    .guide-tabs {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+    }
+    .guide-tab-link {
+      padding: 9px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--muted);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      transition: all .18s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .guide-tab-link:hover {
+      color: var(--text);
+      background: var(--surface-2);
+      border-color: var(--border-accent);
+    }
+    .guide-tab-link.active {
+      color: #fff;
+      background: var(--accent);
+      border-color: transparent;
+      box-shadow: 0 2px 12px rgba(124, 58, 237, 0.35);
+    }
+
+    .guide-content-layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 32px;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .guide-content-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .guide-toc {
+      position: sticky;
+      top: 90px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+    }
+    .guide-toc h3 {
+      margin: 0 0 14px;
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+    }
+    .toc-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      gap: 6px;
+    }
+    .toc-item a {
+      display: block;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--muted);
+      transition: all .15s;
+    }
+    .toc-item a:hover {
+      color: var(--link);
+      background: var(--surface-2);
+    }
+
+    .guide-body {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 36px 32px;
+      box-shadow: var(--shadow);
+    }
+
+    .guide-section {
+      margin-bottom: 40px;
+      padding-bottom: 32px;
+      border-bottom: 1px solid var(--border);
+    }
+    .guide-section:last-child {
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: none;
+    }
+
+    .guide-step-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent-text);
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid rgba(124, 58, 237, 0.35);
+      margin-bottom: 10px;
+    }
+
+    .guide-section h2 {
+      margin: 0 0 14px;
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .guide-section p {
+      margin: 0 0 14px;
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--muted);
+    }
+    .guide-section p strong {
+      color: var(--text);
+    }
+
+    .guide-callout {
+      background: color-mix(in srgb, var(--surface-2) 75%, transparent);
+      border-left: 4px solid var(--link);
+      border-radius: 0 8px 8px 0;
+      padding: 16px 20px;
+      margin: 16px 0;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .guide-callout strong {
+      color: var(--text);
+    }
+
+    .code-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 18px;
+      font-family: var(--mono);
+      font-size: 13.5px;
+      color: var(--text);
+      overflow-x: auto;
+      margin: 14px 0;
+      line-height: 1.6;
+    }
+    .code-box .comment { color: var(--muted); }
+    .code-box .cmd { color: #818cf8; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <%- include('partials/sparkles-bg') %>
+
+  <!-- ======================= NAVBAR ======================= -->
+  <%- include('partials/dashboard-nav', { activePage: 'guide', siteName: 'DevNexus', user: locals.user || null, isAdmin: locals.isAdmin || false }) %>
+
+  <!-- ======================= MAIN CONTENT ======================= -->
+  <main class="dashboard-main" id="main">
+    <div class="container">
+
+      <!-- Header -->
+      <header class="guide-header">
+        <h1>DevNexus Developer Guide &amp; Knowledge Base</h1>
+        <p>
+          Master the open-source contribution lifecycle: from discovering beginner-friendly issues to crafting approved, high-impact pull requests.
+        </p>
+      </header>
+
+      <!-- Navigation Tabs -->
+      <nav class="guide-tabs" aria-label="Guide section tabs">
+        <a href="/learn" class="guide-tab-link <%= activeTab === 'guide' ? 'active' : '' %>">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          Contribution Guide
+        </a>
+        <a href="/learn/git-basics" class="guide-tab-link <%= activeTab === 'git' ? 'active' : '' %>">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
+          Git Basics &amp; Workflow
+        </a>
+        <a href="/learn/code-of-conduct" class="guide-tab-link <%= activeTab === 'conduct' ? 'active' : '' %>">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Code of Conduct
+        </a>
+      </nav>
+
+      <!-- TAB 1: CONTRIBUTION GUIDE -->
+      <% if (activeTab === 'guide') { %>
+        <div class="guide-content-layout">
+          <!-- Sidebar Table of Contents -->
+          <aside class="guide-toc" aria-label="Table of Contents">
+            <h3>Guide Sections</h3>
+            <ul class="toc-list">
+              <li class="toc-item"><a href="#what-is-devnexus">1. What DevNexus Does</a></li>
+              <li class="toc-item"><a href="#discover-repos">2. Discover Repositories</a></li>
+              <li class="toc-item"><a href="#good-first-issues">3. Find Good First Issues</a></li>
+              <li class="toc-item"><a href="#filter-languages">4. Filter by Language</a></li>
+              <li class="toc-item"><a href="#bookmark-issues">5. Bookmark &amp; Track</a></li>
+              <li class="toc-item"><a href="#skill-matching">6. Skill Compatibility Score</a></li>
+              <li class="toc-item"><a href="#opening-issues">7. Opening Issues on GitHub</a></li>
+              <li class="toc-item"><a href="#making-prs">8. Creating Pull Requests</a></li>
+            </ul>
+
+            <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);">
+              <a href="/projects" class="btn btn-primary" style="width: 100%; font-size: 13px;">Explore Projects &rarr;</a>
+            </div>
+          </aside>
+
+          <!-- Guide Body -->
+          <article class="guide-body">
+
+            <!-- 1. What DevNexus Does -->
+            <section class="guide-section" id="what-is-devnexus">
+              <span class="guide-step-badge">Section 1</span>
+              <h2>What DevNexus Does</h2>
+              <p>
+                <strong>DevNexus</strong> is a purpose-built Open-Source Contribution and Collaboration platform engineered to solve the hardest problem for newcomers: <em>Where do I begin?</em>
+              </p>
+              <p>
+                Instead of sifting through millions of repositories or wrestling with complex contribution guides, DevNexus indexes verified beginner-friendly issues from active open-source projects, scores them based on your programming skills, and provides a streamlined interface to claim tasks and track your pull requests.
+              </p>
+              <div class="guide-callout">
+                <strong>Key Platform Pillars:</strong> Real GitHub REST API v3 integration, zero simulated statistics, transparent skill-compatibility algorithms, and full privacy compliance.
+              </div>
+            </section>
+
+            <!-- 2. Discovering Repositories -->
+            <section class="guide-section" id="discover-repos">
+              <span class="guide-step-badge">Section 2</span>
+              <h2>How to Discover Open-Source Repositories</h2>
+              <p>
+                Navigate to the <a href="/projects" style="color:var(--link); font-weight:600; text-decoration:underline;">Explore Projects</a> catalog. The discovery engine fetches real public repositories from GitHub based on community activity and maintainer responsiveness.
+              </p>
+              <p>
+                Use keyword search to find projects by name, ecosystem, or utility (e.g. <code>react</code>, <code>compiler</code>, <code>cli</code>, <code>algorithms</code>). You can sort repositories by <strong>Most Stars</strong>, <strong>Most Forks</strong>, or <strong>Recently Updated</strong>.
+              </p>
+            </section>
+
+            <!-- 3. Finding Good First Issues -->
+            <section class="guide-section" id="good-first-issues">
+              <span class="guide-step-badge">Section 3</span>
+              <h2>How to Find Good First Issues</h2>
+              <p>
+                Maintainers label beginner-friendly tasks with the standardized <code>good first issue</code> or <code>help wanted</code> labels. These tasks typically involve:
+              </p>
+              <ul style="color:var(--muted); line-height:1.7; padding-left:20px; margin-bottom:14px;">
+                <li>Fixing broken links or typos in documentation.</li>
+                <li>Writing unit tests for utility functions.</li>
+                <li>Adding keyboard accessibility or error handling.</li>
+                <li>Updating deprecated method signatures.</li>
+              </ul>
+              <p>
+                On the DevNexus <a href="/projects?topic=good-first-issue" style="color:var(--link); font-weight:600; text-decoration:underline;">Good First Issues filter</a> or Developer Dashboard, issues marked with the green <strong>good first issue</strong> badge are guaranteed to be newcomer-appropriate.
+              </p>
+            </section>
+
+            <!-- 4. Filtering by Language -->
+            <section class="guide-section" id="filter-languages">
+              <span class="guide-step-badge">Section 4</span>
+              <h2>How to Filter by Programming Language</h2>
+              <p>
+                Filter open-source tasks to match your exact technical skillset:
+              </p>
+              <p>
+                Select your language from the dropdown menu (such as <strong>JavaScript, TypeScript, Python, Go, Rust, Java, C++</strong>). DevNexus filters the live GitHub index via <code>language:python</code> parameters so you only see projects and issues in codebases you know.
+              </p>
+            </section>
+
+            <!-- 5. Bookmarking Issues -->
+            <section class="guide-section" id="bookmark-issues">
+              <span class="guide-step-badge">Section 5</span>
+              <h2>How to Bookmark &amp; Track Issues</h2>
+              <p>
+                When you find an issue you want to investigate later, click the <strong>Bookmark</strong> button on the issue card.
+              </p>
+              <p>
+                Bookmarks are securely saved to your persistent SQLite profile in <code>data/devnexus.sqlite</code>. You can review all bookmarked issues directly in your Developer Dashboard under the <strong>Bookmarks</strong> tab at any time, even across sessions.
+              </p>
+            </section>
+
+            <!-- 6. Skill-Based Compatibility Scoring -->
+            <section class="guide-section" id="skill-matching">
+              <span class="guide-step-badge">Section 6</span>
+              <h2>How Skill-Based Matching Works</h2>
+              <p>
+                DevNexus employs an algorithmic compatibility calculator that rates each issue from <strong>50% to 99%</strong> match for your profile:
+              </p>
+              <div class="code-box">
+                <span class="comment">// Compatibility Algorithm Breakdown:</span><br>
+                1. <strong>Language Overlap (45%):</strong> Matches repository language with your onboarding skills.<br>
+                2. <strong>Difficulty Tier (30%):</strong> Good first issues score higher for beginners.<br>
+                3. <strong>Community Activity (15%):</strong> Sweet spot of 1-4 comments ensures open maintainer discussion.<br>
+                4. <strong>Recency (10%):</strong> Issues created or updated within 14 days score highest.
+              </div>
+            </section>
+
+            <!-- 7. Opening Issues on GitHub -->
+            <section class="guide-section" id="opening-issues">
+              <span class="guide-step-badge">Section 7</span>
+              <h2>How to Open Issues on GitHub</h2>
+              <p>
+                Found a bug in an open-source project or have a feature request?
+              </p>
+              <ol style="color:var(--muted); line-height:1.7; padding-left:20px; margin-bottom:14px;">
+                <li>Search the repository's existing issues first to avoid duplicate submissions.</li>
+                <li>Click <strong>New Issue</strong> and select the project's issue template (Bug report, Feature request, Docs).</li>
+                <li>Provide a concise, descriptive title and clear steps to reproduce the behavior.</li>
+                <li>Mention your operating system, runtime version, and include code snippets or logs.</li>
+              </ol>
+            </section>
+
+            <!-- 8. Making a Contribution Through GitHub -->
+            <section class="guide-section" id="making-prs">
+              <span class="guide-step-badge">Section 8</span>
+              <h2>How to Make a Contribution Through GitHub</h2>
+              <p>
+                Follow standard professional open-source Git contribution workflow:
+              </p>
+
+              <div class="code-box">
+                <span class="comment"># 1. Fork the repository on GitHub, then clone your fork:</span><br>
+                <span class="cmd">git clone</span> https://github.com/your-username/repository-name.git<br>
+                <span class="cmd">cd</span> repository-name<br><br>
+                <span class="comment"># 2. Create a focused feature or fix branch:</span><br>
+                <span class="cmd">git checkout -b</span> fix/description-of-change<br><br>
+                <span class="comment"># 3. Make your code changes and run tests locally:</span><br>
+                <span class="cmd">npm test</span><br><br>
+                <span class="comment"># 4. Commit with a conventional, clear commit message:</span><br>
+                <span class="cmd">git add</span> .<br>
+                <span class="cmd">git commit -m</span> "fix(core): resolve broken link in contributing guide"<br><br>
+                <span class="comment"># 5. Push your branch to your GitHub fork:</span><br>
+                <span class="cmd">git push origin</span> fix/description-of-change
+              </div>
+
+              <p>
+                Finally, visit the original repository on GitHub, click <strong>Compare &amp; pull request</strong>, reference the issue number (e.g. <code>Fixes #104</code>), and submit your PR for review!
+              </p>
+
+              <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); display: flex; gap: 12px; flex-wrap: wrap;">
+                <a href="/projects" class="btn btn-primary">Start Browsing Projects &rarr;</a>
+                <a href="/learn/git-basics" class="btn">Learn Git Basics &rarr;</a>
+              </div>
+            </section>
+
+          </article>
+        </div>
+      <% } else if (activeTab === 'git') { %>
+        <!-- TAB 2: GIT BASICS & WORKFLOW -->
+        <article class="guide-body" style="max-width: 860px; margin: 0 auto;">
+          <section class="guide-section">
+            <h2>Essential Git Commands for Open-Source Contributors</h2>
+            <p>
+              Git is the foundational distributed version control system behind GitHub. Here are the core commands you need for smooth collaboration:
+            </p>
+
+            <div class="code-box">
+              <span class="comment"># Configure your contributor identity (run once):</span><br>
+              <span class="cmd">git config --global user.name</span> "Your Full Name"<br>
+              <span class="cmd">git config --global user.email</span> "name@company.com"<br><br>
+              <span class="comment"># Keep your local fork synchronized with the upstream project:</span><br>
+              <span class="cmd">git remote add upstream</span> https://github.com/original-owner/original-repo.git<br>
+              <span class="cmd">git fetch upstream</span><br>
+              <span class="cmd">git checkout main</span><br>
+              <span class="cmd">git merge upstream/main</span><br><br>
+              <span class="comment"># Inspect changed files and status:</span><br>
+              <span class="cmd">git status</span><br>
+              <span class="cmd">git diff</span>
+            </div>
+
+            <div class="guide-callout">
+              <strong>Best Practice:</strong> Always create a new branch for each contribution (never commit directly to your <code>main</code> branch). This keeps your workspace clean and makes pull request rebasing trivial.
+            </div>
+
+            <div style="margin-top: 24px;">
+              <a href="/learn" class="btn btn-primary">&larr; Back to Contribution Guide</a>
+            </div>
+          </section>
+        </article>
+      <% } else if (activeTab === 'conduct') { %>
+        <!-- TAB 3: CODE OF CONDUCT -->
+        <article class="guide-body" style="max-width: 860px; margin: 0 auto;">
+          <section class="guide-section">
+            <h2>Contributor Code of Conduct</h2>
+            <p>
+              DevNexus is dedicated to providing a harassment-free, welcoming, and inclusive experience for everyone, regardless of experience level, background, gender identity, sexual orientation, disability, personal appearance, race, ethnicity, or religion.
+            </p>
+            <div class="guide-callout">
+              <strong>Our Pledge:</strong>
+              <ul style="margin: 8px 0 0; padding-left: 18px;">
+                <li>Demonstrate empathy and kindness toward other contributors and reviewers.</li>
+                <li>Give and gracefully accept constructive code review feedback.</li>
+                <li>Respect differing viewpoints, experiences, and technical approaches.</li>
+                <li>Focus on what is best for the open-source community.</li>
+              </ul>
+            </div>
+            <div style="margin-top: 24px;">
+              <a href="/learn" class="btn btn-primary">&larr; Back to Contribution Guide</a>
+            </div>
+          </section>
+        </article>
+      <% } %>
+
+    </div>
+  </main>
+
+  <!-- ======================= FOOTER ======================= -->
+  <%- include('partials/footer') %>
+</body>
+</html>
