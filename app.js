@@ -77,6 +77,12 @@ app.use("/projects", require("./routes/projectRoutes"));
 app.use("/dashboard", require("./routes/dashboardRoutes"));
 app.use("/admin", require("./routes/adminRoutes"));
 
+// --- Portfolio & Skill Tree Routes ---
+app.use("/portfolio", require("./routes/portfolioRoutes"));
+app.use("/api/portfolio", require("./routes/portfolioRoutes"));
+app.use("/skill-tree", require("./routes/skillTreeRoutes"));
+app.use("/api/skill-tree", require("./routes/skillTreeRoutes"));
+
 // --- Content, Guide & Community Routes ---
 app.use("/", require("./routes/contentRoutes"));
 
