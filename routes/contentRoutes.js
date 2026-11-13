@@ -5,39 +5,149 @@
 
 const express = require('express');
 const router = express.Router();
-const { getLeaderboard, getLeaderboardStats } = require('../db/database');
+const {
+  getLeaderboard,
+  getLeaderboardStats,
+  setRoadmapStepStatus,
+  resetUserRoadmapProgress
+} = require('../db/database');
 const { syncContributorFromGitHub } = require('../services/githubService');
+const {
+  getRoadmapStagesWithProgress,
+  calculateContributionReadiness
+} = require('../services/saanviModulesService');
 
 
-// 1. Contribution Guide & Learning Hub
+// 1. Contribution Guide, First Contribution Roadmap & Learning Hub
 router.get(['/learn', '/guide'], (req, res) => {
+  const requestedTab = String(req.query.tab || '').toLowerCase();
+  const activeTab = ['guide', 'roadmap', 'git', 'conduct'].includes(requestedTab) ? requestedTab : 'guide';
+  const roadmap = getRoadmapStagesWithProgress(req.user ? req.user.id : null);
   res.render('guide', {
     siteName: 'DevNexus',
     activePage: 'guide',
-    activeTab: 'guide',
+    activeTab,
+    roadmap,
+    user: req.user || null,
+    isAdmin: req.user && req.user.role === 'admin'
+  });
+});
+
+router.get(['/roadmap', '/learn/roadmap'], (req, res) => {
+  const roadmap = getRoadmapStagesWithProgress(req.user ? req.user.id : null);
+  res.render('guide', {
+    siteName: 'DevNexus',
+    activePage: 'guide',
+    activeTab: 'roadmap',
+    roadmap,
     user: req.user || null,
     isAdmin: req.user && req.user.role === 'admin'
   });
 });
 
 router.get('/learn/git-basics', (req, res) => {
+  const roadmap = getRoadmapStagesWithProgress(req.user ? req.user.id : null);
   res.render('guide', {
     siteName: 'DevNexus',
     activePage: 'guide',
     activeTab: 'git',
+    roadmap,
     user: req.user || null,
     isAdmin: req.user && req.user.role === 'admin'
   });
 });
 
 router.get('/learn/code-of-conduct', (req, res) => {
+  const roadmap = getRoadmapStagesWithProgress(req.user ? req.user.id : null);
   res.render('guide', {
     siteName: 'DevNexus',
     activePage: 'guide',
     activeTab: 'conduct',
+    roadmap,
     user: req.user || null,
     isAdmin: req.user && req.user.role === 'admin'
   });
+});
+
+// 1b. First Contribution Roadmap JSON API Endpoints (Persistent SQLite Progress)
+router.get('/api/roadmap', (req, res) => {
+  try {
+    const userId = req.user ? req.user.id : null;
+    const roadmap = getRoadmapStagesWithProgress(userId);
+    res.json({
+      success: true,
+      authenticated: Boolean(req.user),
+      ...roadmap
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Failed to retrieve roadmap progress.' });
+  }
+});
+
+router.post('/api/roadmap/step', (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({
+      success: false,
+      error: 'Authentication required. Please sign in to save your roadmap progress.'
+    });
+  }
+
+  const body = req.body || {};
+  const rawStep = body.stepNumber !== undefined ? body.stepNumber : body.step;
+  const parsedStep = Number(rawStep);
+
+  if (!Number.isInteger(parsedStep) || parsedStep < 1 || parsedStep > 14) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid stepNumber. Must be an integer between 1 and 14.'
+    });
+  }
+
+  const completed = body.completed === undefined
+    ? true
+    : (body.completed === true || body.completed === 'true' || body.completed === 1 || body.completed === '1');
+
+  try {
+    setRoadmapStepStatus(req.user.id, parsedStep, completed);
+    const updatedRoadmap = getRoadmapStagesWithProgress(req.user.id);
+    const readiness = calculateContributionReadiness(req.user, [], {
+      roadmapCompletedCount: updatedRoadmap.completedCount
+    });
+    return res.json({
+      success: true,
+      stepNumber: parsedStep,
+      completed,
+      ...updatedRoadmap,
+      readinessScore: readiness.score
+    });
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      error: err.message || 'Could not update roadmap progress.'
+    });
+  }
+});
+
+router.post('/api/roadmap/reset', (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({
+      success: false,
+      error: 'Authentication required to reset roadmap progress.'
+    });
+  }
+  try {
+    resetUserRoadmapProgress(req.user.id);
+    const updatedRoadmap = getRoadmapStagesWithProgress(req.user.id);
+    return res.json({
+      success: true,
+      ...updatedRoadmap
+    });
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      error: err.message || 'Could not reset roadmap progress.'
+    });
+  }
 });
 
 // 2. Search Navigation Jump

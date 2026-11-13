@@ -7,7 +7,7 @@
 const express = require('express');
 const router = express.Router();
 
-const { searchRepositories } = require('../services/githubService');
+const { searchRepositories, calculateRepositoryHealth } = require('../services/githubService');
 
 const AVAILABLE_LANGUAGES = [
   'All',
@@ -123,10 +123,29 @@ router.get('/', async (req, res) => {
   }
 });
 
+// POST /projects/api/health - Evaluate Repository Health Score from metadata payload
+router.post('/api/health', (req, res) => {
+  try {
+    const repoPayload = req.body && typeof req.body === 'object' ? req.body : null;
+    const health = calculateRepositoryHealth(repoPayload);
+    res.json({
+      success: true,
+      health
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: 'Unable to calculate repository health score.'
+    });
+  }
+});
+
 // GET /projects/:owner/:repo - Direct repository jump to GitHub
 router.get('/:owner/:repo', (req, res) => {
-  const { owner, repo } = req.params;
-  if (!owner || !repo) {
+  const owner = (req.params.owner || '').trim();
+  const repo = (req.params.repo || '').trim();
+  const validSegment = /^[a-zA-Z0-9._-]{1,100}$/;
+  if (!owner || !repo || !validSegment.test(owner) || !validSegment.test(repo)) {
     return res.redirect('/projects');
   }
   res.redirect(`https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`);

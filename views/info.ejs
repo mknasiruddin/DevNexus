@@ -126,7 +126,7 @@
           </p>
           <ul>
             <li><strong>GitHub OAuth (Primary):</strong> One-click developer sign-in retrieving real GitHub contributor identities and token authorizations.</li>
-            <li><strong>Credential Authentication:</strong> Password hashing via <code>crypto.scryptSync</code> with unique 16-byte random salts.</li>
+            <li><strong>Credential Authentication:</strong> Password hashing via <code>bcrypt</code> (cost factor 12) with legacy <code>crypto.scryptSync</code> compatibility.</li>
           </ul>
 
         <% } else if (section === 'leaderboard') { %>
@@ -139,7 +139,7 @@
               <tr><th>Rank</th><th>Contributor</th><th>Primary Tech</th><th>PRs Merged</th><th>Points</th></tr>
             </thead>
           <tbody>
-  <% if (leaderboard && leaderboard.length > 0) { %>
+  <% if (Array.isArray(locals.leaderboard) && leaderboard.length > 0) { %>
     <% leaderboard.forEach((contributor, index) => { %>
       <tr>
         <td><%= index + 1 %></td>

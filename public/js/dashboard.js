@@ -22,36 +22,38 @@
     toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 2800);
   }
 
-  // Theme switcher
-  var themeToggle = $('#theme-toggle');
-  if (themeToggle) {
-    themeToggle.addEventListener('click', function () {
-      var currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
-      var nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', nextTheme);
-      try { localStorage.setItem('theme', nextTheme); } catch (e) {}
-    });
-  }
-
-  // Mobile menu
-  var burger = $('#burger');
-  var mobilePanel = $('#mobile-panel');
-  if (burger && mobilePanel) {
-    burger.addEventListener('click', function () {
-      mobilePanel.classList.toggle('open');
-    });
-  }
-
-  // Keyboard shortcut '/'
-  document.addEventListener('keydown', function (e) {
-    var tag = (document.activeElement || {}).tagName;
-    if (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
-      var s = $('#nav-search') || $('input[name="q"]');
-      if (s) { e.preventDefault(); s.focus(); }
+  // Fallback theme & mobile menu listeners if not already initialized by dashboard-nav partial
+  if (!window.__devnexusNavInit) {
+    window.__devnexusNavInit = true;
+    var themeToggle = $('#theme-toggle');
+    if (themeToggle) {
+      themeToggle.addEventListener('click', function () {
+        var currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+        var nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', nextTheme);
+        try { localStorage.setItem('theme', nextTheme); } catch (e) {}
+      });
     }
-  });
 
-  // Persistent Database Bookmarking
+    var burger = $('#burger');
+    var mobilePanel = $('#mobile-panel');
+    if (burger && mobilePanel) {
+      burger.addEventListener('click', function () {
+        var open = mobilePanel.classList.toggle('open');
+        burger.setAttribute('aria-expanded', String(open));
+      });
+    }
+  }
+
+  function updateBookmarkCounts(count) {
+    var counts = ['#sidebar-bookmark-count', '#stats-bookmark-count', '#tab-bookmark-count', '#saved-bookmarks-heading-count'];
+    counts.forEach(function (sel) {
+      var el = $(sel);
+      if (el) el.textContent = count;
+    });
+  }
+
+  // Persistent Database Bookmarking (Issue list ribbon buttons)
   document.addEventListener('click', async function (e) {
     var btn = e.target.closest('.bookmark-btn');
     if (!btn) return;
@@ -92,19 +94,55 @@
           btn.setAttribute('aria-pressed', 'true');
           showToast('Saved to persistent SQLite database.');
         }
-
-        // Update counts across the dashboard
-        var counts = ['#sidebar-bookmark-count', '#stats-bookmark-count', '#tab-bookmark-count'];
-        counts.forEach(function (sel) {
-          var el = $(sel);
-          if (el) el.textContent = data.count;
-        });
+        updateBookmarkCounts(data.count);
       } else {
         showToast(data.error || 'Failed to update bookmark.');
       }
     } catch (err) {
       btn.disabled = false;
       showToast('Network error while saving bookmark.');
+    }
+  });
+
+  // Remove Bookmark directly from the Saved Bookmarks container
+  document.addEventListener('click', async function (e) {
+    var removeBtn = e.target.closest('.remove-saved-bookmark-btn');
+    if (!removeBtn) return;
+    e.preventDefault();
+
+    var htmlUrl = removeBtn.dataset.htmlUrl;
+    if (!htmlUrl) return;
+
+    try {
+      removeBtn.disabled = true;
+      var res = await fetch('/dashboard/api/bookmarks', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ html_url: htmlUrl })
+      });
+      var data = await res.json();
+      removeBtn.disabled = false;
+
+      if (data.success) {
+        var row = removeBtn.closest('.issue-row');
+        if (row) row.remove();
+        updateBookmarkCounts(data.count);
+
+        // Also update corresponding ribbon button in the discovery list if visible
+        $$('.bookmark-btn').forEach(function (b) {
+          if (b.dataset.htmlUrl === htmlUrl) {
+            b.classList.remove('active');
+            b.setAttribute('aria-pressed', 'false');
+          }
+        });
+
+        showToast('Bookmark removed from SQLite database.');
+      } else {
+        showToast(data.error || 'Failed to remove bookmark.');
+      }
+    } catch (err) {
+      removeBtn.disabled = false;
+      showToast('Network error while removing bookmark.');
     }
   });
 
@@ -127,6 +165,7 @@
     closeBookmarksBtn.addEventListener('click', function () {
       bookmarksContainer.style.display = 'none';
       issuesContainer.style.display = 'block';
+      $$('.tab-btn').forEach(function (b) { b.classList.remove('active'); });
       var firstTab = $('.tab-btn');
       if (firstTab) firstTab.classList.add('active');
     });

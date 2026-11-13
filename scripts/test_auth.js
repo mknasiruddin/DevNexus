@@ -143,6 +143,10 @@ function request(server, method, path, data = null, cookie = null) {
     } catch (err) {
       console.error('Test suite error:', err);
     } finally {
+      try {
+        const { db } = require('../db/database');
+        db.prepare("DELETE FROM users WHERE username LIKE 'user_%' AND email LIKE '%@test.local'").run();
+      } catch (e) {}
       server.close();
     }
   });

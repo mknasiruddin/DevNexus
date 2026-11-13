@@ -11,6 +11,7 @@ const { requireAdmin } = require('../services/authService');
 const {
   countUsers,
   getAllUsers,
+  findUserById,
   updateUserRole,
   toggleUserStatus,
   getBookmarkStats,
@@ -93,10 +94,19 @@ router.get('/', (req, res) => {
 // User Management: Update Role
 router.post('/users/:id/role', (req, res) => {
   const targetUserId = parseInt(req.params.id, 10);
-  const { role } = req.body;
+  const { role } = req.body || {};
+
+  if (!targetUserId || isNaN(targetUserId)) {
+    return res.status(400).json({ success: false, error: 'Invalid user ID.' });
+  }
 
   if (!['contributor', 'maintainer', 'admin'].includes(role)) {
     return res.status(400).json({ success: false, error: 'Invalid role specified.' });
+  }
+
+  const targetUser = findUserById(targetUserId);
+  if (!targetUser) {
+    return res.status(404).json({ success: false, error: 'Target user not found.' });
   }
 
   // Prevent self-demotion of the primary administrator
@@ -106,10 +116,10 @@ router.post('/users/:id/role', (req, res) => {
 
   try {
     updateUserRole(targetUserId, role);
-    logActivity(req.user.id, 'USER_ROLE_UPDATE', `User #${targetUserId}`, `Updated role to ${role}`);
+    logActivity(req.user.id, 'USER_ROLE_UPDATE', `User #${targetUserId} (${targetUser.username})`, `Updated role to ${role}`);
     res.json({ success: true, role });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Failed to update user role.' });
   }
 });
 
@@ -117,16 +127,25 @@ router.post('/users/:id/role', (req, res) => {
 router.post('/users/:id/toggle-status', (req, res) => {
   const targetUserId = parseInt(req.params.id, 10);
 
+  if (!targetUserId || isNaN(targetUserId)) {
+    return res.status(400).json({ success: false, error: 'Invalid user ID.' });
+  }
+
+  const targetUser = findUserById(targetUserId);
+  if (!targetUser) {
+    return res.status(404).json({ success: false, error: 'Target user not found.' });
+  }
+
   if (req.user.id === targetUserId) {
     return res.status(400).json({ success: false, error: 'Administrators cannot suspend their own account.' });
   }
 
   try {
     const newStatus = toggleUserStatus(targetUserId);
-    logActivity(req.user.id, 'USER_STATUS_TOGGLE', `User #${targetUserId}`, `Toggled status to ${newStatus}`);
+    logActivity(req.user.id, 'USER_STATUS_TOGGLE', `User #${targetUserId} (${targetUser.username})`, `Toggled status to ${newStatus}`);
     res.json({ success: true, status: newStatus });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Failed to toggle user status.' });
   }
 });
 

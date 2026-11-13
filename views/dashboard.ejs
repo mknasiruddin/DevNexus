@@ -1,3 +1,20 @@
+<%
+  const skillDotColors = {
+    javascript: '#f1e05a',
+    typescript: '#3178c6',
+    python: '#3572A5',
+    go: '#00ADD8',
+    rust: '#dea584',
+    java: '#b07219',
+    'node.js': '#68a063',
+    react: '#61dafb',
+    docs: '#8b949e'
+  };
+  const effectiveSkills = (Array.isArray(locals.userSkills) && userSkills.length > 0)
+    ? userSkills
+    : ['JavaScript', 'Python', 'TypeScript'];
+  const expLevel = (user && user.experience_level) ? user.experience_level : 'Beginner';
+%>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -37,6 +54,13 @@
   <main class="dashboard-main" id="main">
     <div class="container">
 
+      <% if (locals.profileUpdated) { %>
+        <div style="padding: 12px 16px; border-radius: 10px; margin-bottom: 18px; background: rgba(34, 197, 94, 0.14); border: 1px solid rgba(34, 197, 94, 0.35); color: #4ade80; font-size: 13.5px; display: flex; align-items: center; gap: 10px;" role="status">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+          <span>Your developer profile, experience level, and skill preferences have been updated in SQLite.</span>
+        </div>
+      <% } %>
+
       <!-- Rate Limit or API Error Notice -->
       <% if (locals.issueError === 'RATE_LIMIT_EXCEEDED') { %>
         <div class="error-banner" role="alert">
@@ -62,20 +86,21 @@
         <aside class="profile-card" aria-label="Developer Profile">
           <div class="profile-header">
             <img class="profile-avatar-lg" src="<%= profile.avatar_url %>" alt="<%= profile.name || profile.login %> avatar">
-            <h2 class="profile-name-lg"><%= profile.name || profile.login %></h2>
+            <h2 class="profile-name-lg"><%= (targetUsername === user.username && user.name) ? user.name : (profile.name || profile.login) %></h2>
             <a href="https://github.com/<%= profile.login %>" target="_blank" rel="noopener noreferrer" class="profile-handle" title="View profile on GitHub">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
               @<%= profile.login %>
             </a>
-            <p class="profile-bio"><%= profile.bio || 'Open-source software contributor exploring impactful community projects.' %></p>
+            <p class="profile-bio"><%= (targetUsername === user.username && user.bio) ? user.bio : (profile.bio || 'Open-source software contributor exploring impactful community projects.') %></p>
 
             <% if (user) { %>
               <div style="margin-top: 10px;">
-                <span class="level-badge intermediate">
-                  <span class="status-dot online"></span> Authenticated User
+                <span class="level-badge intermediate" title="Experience Level">
+                  <span class="status-dot online"></span> <%= expLevel %> Contributor
                 </span>
-                <div style="margin-top: 8px;">
-                  <a href="/auth/logout" class="btn btn-sm" style="font-size: 11px;">Sign Out</a>
+                <div style="margin-top: 10px; display: flex; gap: 6px; justify-content: center; flex-wrap: wrap;">
+                  <a href="/onboarding?edit=1" class="btn btn-sm" style="font-size: 11.5px;">Edit Profile &amp; Skills</a>
+                  <a href="/auth/logout" class="btn btn-sm" style="font-size: 11.5px;">Sign Out</a>
                 </div>
               </div>
             <% } else { %>
@@ -89,10 +114,16 @@
 
           <!-- Switch GitHub Handle Form -->
           <form action="/dashboard" method="GET" style="margin-bottom: 16px;">
+            <label for="inspect-username-input" style="display:block; font-size:11px; font-weight:600; color:var(--muted); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.04em;">Inspect GitHub Handle</label>
             <div style="display:flex; gap:6px;">
-              <input type="text" name="username" value="<%= targetUsername %>" placeholder="your-github-username" aria-label="GitHub username to inspect" style="flex:1; height:32px; padding:0 8px; font-size:12px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); outline:none;">
+              <input id="inspect-username-input" type="text" name="username" value="<%= targetUsername %>" placeholder="your-github-username" aria-label="GitHub username to inspect" style="flex:1; height:32px; padding:0 8px; font-size:12px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); outline:none;">
               <button type="submit" class="btn btn-sm">Inspect</button>
             </div>
+            <% if (targetUsername !== user.username) { %>
+              <div style="margin-top: 6px; font-size: 11.5px;">
+                Inspecting <strong>@<%= targetUsername %></strong> &bull; <a href="/dashboard" style="color: var(--link);">Reset to @<%= user.username %></a>
+              </div>
+            <% } %>
           </form>
 
           <ul class="meta-list">
@@ -111,13 +142,17 @@
           </ul>
 
           <div class="skills-section">
-            <h4>Primary Languages</h4>
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+              <h4 style="margin:0;">Declared Skills</h4>
+              <a href="/onboarding?edit=1" style="font-size:11.5px; color:var(--link); text-decoration:none;">Customize</a>
+            </div>
             <div class="skills-cloud">
-              <span class="skill-chip"><span class="skill-dot" style="background-color: #f1e05a;"></span>JavaScript</span>
-              <span class="skill-chip"><span class="skill-dot" style="background-color: #3572A5;"></span>Python</span>
-              <span class="skill-chip"><span class="skill-dot" style="background-color: #3178c6;"></span>TypeScript</span>
-              <span class="skill-chip"><span class="skill-dot" style="background-color: #dea584;"></span>Rust</span>
-              <span class="skill-chip"><span class="skill-dot" style="background-color: #00ADD8;"></span>Go</span>
+              <% effectiveSkills.forEach(function(skill) {
+                   const sName = typeof skill === 'string' ? skill : (skill.name || 'Code');
+                   const sColor = skillDotColors[sName.toLowerCase()] || '#818CF8';
+              %>
+                <span class="skill-chip"><span class="skill-dot" style="background-color: <%= sColor %>;"></span><%= sName %></span>
+              <% }); %>
             </div>
           </div>
         </aside>
@@ -142,25 +177,134 @@
               <div class="metric-sub">Matching active query</div>
             </div>
             <div class="metric-card">
-              <div class="metric-title">API Response Status</div>
-              <div class="metric-val" style="font-size:22px; color:var(--accent-text);">
-                <%= locals.issueError ? 'Rate-Limited' : '200 OK' %>
+              <div class="metric-title">Contribution Readiness</div>
+              <div class="metric-val" style="color:var(--accent-text);">
+                <%= locals.readinessScore ? readinessScore.score : 75 %>%
               </div>
-              <div class="metric-sub">Live REST connection</div>
+              <div class="metric-sub"><%= locals.readinessScore ? readinessScore.readinessLevel : 'Rule-based score' %></div>
             </div>
           </div>
+
+          <!-- ======================= MODULE 1: CONTRIBUTION READINESS SCORE ======================= -->
+          <% if (locals.readinessScore) {
+               const rs = readinessScore;
+               const rmProg = locals.roadmapProgress || { completedCount: 0, totalStages: 14, percentage: 0 };
+          %>
+            <div class="dash-card" id="contribution-readiness-card" aria-label="Contribution Readiness Score">
+              <div class="dash-card-header">
+                <h3 class="dash-card-title">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
+                  Contribution Readiness Score &amp; Skill Alignment
+                </h3>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                  <a href="/roadmap" class="btn btn-sm">
+                    14-Stage Roadmap (<%= rmProg.completedCount %>/<%= rmProg.totalStages %>)
+                  </a>
+                  <a href="/onboarding?edit=1" class="btn btn-sm btn-primary">
+                    Update Skills &amp; Level
+                  </a>
+                </div>
+              </div>
+
+              <div class="dash-card-body">
+                <div class="readiness-grid">
+                  <!-- Left: Visual Score Box -->
+                  <div class="readiness-score-box">
+                    <div style="font-size:11.5px; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); font-weight:700; margin-bottom:6px;">
+                      Readiness Score
+                    </div>
+                    <div class="readiness-score-num" id="readiness-score-value"><%= rs.score %><span style="font-size:18px; color:var(--muted);">/100</span></div>
+                    <div class="readiness-tier-badge <%= rs.badgeClass || 'medium' %>" id="readiness-level-badge">
+                      <%= rs.readinessLevel %>
+                    </div>
+                    <div class="readiness-bar-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<%= rs.score %>">
+                      <div class="readiness-bar-fill" style="width: <%= rs.score %>%;"></div>
+                    </div>
+                    <div style="margin-top:10px; font-size:12px; color:var(--muted);">
+                      Experience Tier: <strong style="color:var(--text);"><%= rs.experienceLevel %></strong>
+                    </div>
+                  </div>
+
+                  <!-- Right: 4-Factor Breakdown, Matched/Missing Skills & Actionable Suggestions -->
+                  <div>
+                    <div class="readiness-factors">
+                      <% Object.keys(rs.breakdown || {}).forEach(function(bKey) {
+                           const factor = rs.breakdown[bKey];
+                      %>
+                        <div class="readiness-factor-card">
+                          <div class="readiness-factor-top">
+                            <span><%= factor.label %></span>
+                            <span style="color:var(--accent-text);"><%= factor.score %> / <%= factor.maxScore %> pts</span>
+                          </div>
+                          <div class="readiness-bar-track" style="height:5px; margin-bottom:6px;">
+                            <div class="readiness-bar-fill" style="width: <%= factor.percentage %>%;"></div>
+                          </div>
+                          <div style="font-size:11.5px; color:var(--muted); line-height:1.4;"><%= factor.explanation %></div>
+                        </div>
+                      <% }); %>
+                    </div>
+
+                    <!-- Matched & Missing Skills -->
+                    <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:12px; font-size:12.5px;">
+                      <div>
+                        <strong style="color:var(--text); display:inline-block; margin-right:6px;">Matched Skills:</strong>
+                        <% if (rs.matchedSkills && rs.matchedSkills.length > 0) { %>
+                          <% rs.matchedSkills.forEach(function(ms) { %>
+                            <span class="readiness-skill-pill matched">&#10003; <%= ms %></span>
+                          <% }); %>
+                        <% } else if (rs.declaredSkills && rs.declaredSkills.length > 0) { %>
+                          <% rs.declaredSkills.slice(0, 4).forEach(function(ds) { %>
+                            <span class="readiness-skill-pill matched"><%= ds %> (Declared)</span>
+                          <% }); %>
+                        <% } else { %>
+                          <span style="color:var(--muted);">None declared yet</span>
+                        <% } %>
+                      </div>
+
+                      <div>
+                        <strong style="color:var(--text); display:inline-block; margin-right:6px;">Missing / Unmatched Issue Skills:</strong>
+                        <% if (rs.missingSkills && rs.missingSkills.length > 0) { %>
+                          <% rs.missingSkills.forEach(function(mis) { %>
+                            <span class="readiness-skill-pill missing">+ <%= mis %></span>
+                          <% }); %>
+                        <% } else { %>
+                          <span style="color:#4ade80;">No missing skill gaps detected for current issues</span>
+                        <% } %>
+                      </div>
+                    </div>
+
+                    <!-- Actionable Suggestions -->
+                    <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px 14px; font-size:12.5px;">
+                      <strong style="color:var(--text); display:block; margin-bottom:4px;">Suggestions to Improve Readiness:</strong>
+                      <ul style="margin:0; padding-left:18px; color:var(--muted); line-height:1.55;">
+                        <% (rs.suggestions || []).forEach(function(sug) { %>
+                          <li><%= sug %></li>
+                        <% }); %>
+                      </ul>
+                      <div style="margin-top:6px; font-size:11px; color:var(--muted); border-top:1px solid var(--border); padding-top:6px;">
+                        <%= rs.formulaExplanation %>
+                        <div style="margin-top:4px; color:var(--text-muted, #94a3b8);">
+                          <strong>Note:</strong> <%= rs.assessmentDisclaimer || 'Estimated readiness assessment based on rule-based profile and issue metadata — not a guarantee of contribution acceptance.' %>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          <% } %>
 
           <!-- REAL ISSUE DISCOVERY & FILTERING -->
           <div class="dash-card">
             <div class="dash-card-header">
               <div class="tab-group" role="tablist">
-                <a href="/dashboard?username=<%= targetUsername %>&label=all&language=<%= activeLanguage %>" class="tab-btn <%= activeLabel === 'all' ? 'active' : '' %>">
+                <a href="/dashboard?username=<%= encodeURIComponent(targetUsername) %>&label=all&language=<%= encodeURIComponent(activeLanguage) %>" class="tab-btn <%= activeLabel === 'all' ? 'active' : '' %>">
                   Recommended For You
                 </a>
-                <a href="/dashboard?username=<%= targetUsername %>&label=good-first-issue&language=<%= activeLanguage %>" class="tab-btn <%= activeLabel === 'good-first-issue' ? 'active' : '' %>">
+                <a href="/dashboard?username=<%= encodeURIComponent(targetUsername) %>&label=good-first-issue&language=<%= encodeURIComponent(activeLanguage) %>" class="tab-btn <%= activeLabel === 'good-first-issue' ? 'active' : '' %>">
                   Good First Issues
                 </a>
-                <a href="/dashboard?username=<%= targetUsername %>&label=help-wanted&language=<%= activeLanguage %>" class="tab-btn <%= activeLabel === 'help-wanted' ? 'active' : '' %>">
+                <a href="/dashboard?username=<%= encodeURIComponent(targetUsername) %>&label=help-wanted&language=<%= encodeURIComponent(activeLanguage) %>" class="tab-btn <%= activeLabel === 'help-wanted' ? 'active' : '' %>">
                   Help Wanted
                 </a>
                 <button type="button" class="tab-btn" id="view-bookmarks-tab">
@@ -180,7 +324,7 @@
               </div>
 
               <div class="filter-selects">
-                <select name="language" class="filter-select" onchange="this.form.submit()">
+                <select name="language" class="filter-select" aria-label="Filter issues by programming language" onchange="this.form.submit()">
                   <option value="all" <%= activeLanguage === 'all' ? 'selected' : '' %>>Language: All</option>
                   <option value="javascript" <%= activeLanguage === 'javascript' ? 'selected' : '' %>>JavaScript</option>
                   <option value="typescript" <%= activeLanguage === 'typescript' ? 'selected' : '' %>>TypeScript</option>
@@ -200,7 +344,7 @@
                   <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                   <h3>No matching open issues found</h3>
                   <p>Try clearing your keyword query or expanding the language filter to discover more open-source opportunities.</p>
-                  <a href="/dashboard?username=<%= targetUsername %>" class="btn btn-sm">Reset Search</a>
+                  <a href="/dashboard?username=<%= encodeURIComponent(targetUsername) %>" class="btn btn-sm">Reset Search</a>
                 </div>
               <% } else { %>
                 <ul class="issue-items">
@@ -240,9 +384,17 @@
                              title="Skill Overlap: <%= issue.compatibilityBreakdown.skillOverlap %>%, Alignment: <%= issue.compatibilityBreakdown.difficultyAlignment %>%, Community Support: <%= issue.compatibilityBreakdown.mentorSupport %>%">
                           <%= issue.compatibilityScore %>% Match
                         </div>
+                        <% if (issue.readiness) { %>
+                          <div class="compat-badge <%= issue.readiness.score >= 75 ? 'high' : 'medium' %>"
+                               style="margin-top:4px; font-size:11px;"
+                               title="<%= issue.readiness.readinessLevel %> — <%= issue.readiness.assessmentDisclaimer || 'Estimated readiness assessment' %>">
+                            Readiness: <%= issue.readiness.score %>%
+                          </div>
+                        <% } %>
 
                         <div class="issue-actions">
                           <button class="bookmark-btn <%= issue.isBookmarked ? 'active' : '' %>"
+                                  type="button"
                                   data-issue-id="<%= issue.id %>"
                                   data-number="<%= issue.number %>"
                                   data-repo="<%= issue.repoName %>"
@@ -273,12 +425,12 @@
                     </div>
                     <div style="display:flex; gap:8px;">
                       <% if (currentPage > 1) { %>
-                        <a href="/dashboard?username=<%= targetUsername %>&label=<%= activeLabel %>&language=<%= activeLanguage %>&q=<%= encodeURIComponent(activeQuery) %>&page=<%= currentPage - 1 %>" class="btn btn-sm">
+                        <a href="/dashboard?username=<%= encodeURIComponent(targetUsername) %>&label=<%= encodeURIComponent(activeLabel) %>&language=<%= encodeURIComponent(activeLanguage) %>&q=<%= encodeURIComponent(activeQuery) %>&page=<%= currentPage - 1 %>" class="btn btn-sm">
                           &larr; Previous
                         </a>
                       <% } %>
                       <% if (currentPage < totalPages) { %>
-                        <a href="/dashboard?username=<%= targetUsername %>&label=<%= activeLabel %>&language=<%= activeLanguage %>&q=<%= encodeURIComponent(activeQuery) %>&page=<%= currentPage + 1 %>" class="btn btn-sm">
+                        <a href="/dashboard?username=<%= encodeURIComponent(targetUsername) %>&label=<%= encodeURIComponent(activeLabel) %>&language=<%= encodeURIComponent(activeLanguage) %>&q=<%= encodeURIComponent(activeQuery) %>&page=<%= currentPage + 1 %>" class="btn btn-sm">
                           Next &rarr;
                         </a>
                       <% } %>
@@ -291,8 +443,8 @@
             <!-- BOOKMARKS MODAL / CONTAINER (Persistent from SQLite) -->
             <div id="bookmarks-view-container" style="display: none; padding: 24px;">
               <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
-                <h3 style="margin:0; font-size:16px;">Your Persistent Database Bookmarks (<%= bookmarks.length %>)</h3>
-                <button class="btn btn-sm" id="close-bookmarks-view">Back to Discovery</button>
+                <h3 style="margin:0; font-size:16px;">Your Persistent Database Bookmarks (<span id="saved-bookmarks-heading-count"><%= bookmarks.length %></span>)</h3>
+                <button type="button" class="btn btn-sm" id="close-bookmarks-view">Back to Discovery</button>
               </div>
 
               <% if (bookmarks.length === 0) { %>
@@ -317,7 +469,10 @@
                           <span>Saved to SQLite: <%= new Date(b.created_at).toLocaleDateString() %></span>
                         </div>
                       </div>
-                      <div class="issue-side">
+                      <div class="issue-side" style="display:flex; gap:8px; align-items:center;">
+                        <button type="button" class="btn btn-sm remove-saved-bookmark-btn" data-html-url="<%= b.html_url %>" title="Remove bookmark from SQLite">
+                          Remove
+                        </button>
                         <a href="<%= b.html_url %>" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-primary">
                           Open GitHub &rarr;
                         </a>
@@ -351,7 +506,13 @@
                         <span>★ <%= r.stars %></span>
                       </div>
                       <p class="repo-card-desc"><%= r.description %></p>
-                      <div class="repo-card-foot">
+                      <% if (r.health) { %>
+                        <div style="font-size:11.5px; color:var(--muted); display:flex; align-items:center; justify-content:space-between; background:var(--bg); padding:5px 9px; border-radius:6px; border:1px solid var(--border);">
+                          <span>Repo Health: <strong style="color:var(--text);"><%= r.health.score %>/100</strong></span>
+                          <span style="color:var(--accent-text); font-weight:600;"><%= r.health.statusLabel %></span>
+                        </div>
+                      <% } %>
+                      <div class="repo-card-foot" style="display:flex; justify-content:space-between; align-items:center;">
                         <span><%= r.language %></span>
                         <a href="<%= r.htmlUrl %>" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline">
                           View Repo &rarr;
