@@ -1,8 +1,3 @@
-/**
- * DevNexus Contribution Streak Routes (Member 3)
- * Full HTML views and REST API endpoints for developer contribution streaks.
- */
-
 'use strict';
 
 const express = require('express');
@@ -11,7 +6,6 @@ const { requireAuth } = require('../services/authService');
 const streakService = require('../services/streakService');
 const { findUserByUsername } = require('../db/database');
 
-// Helper to determine if JSON response is expected
 function isJsonRequest(req) {
   return Boolean(
     req.xhr ||
@@ -22,87 +16,39 @@ function isJsonRequest(req) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// 1. GET /streak or /api/streak — Main Streak Dashboard & JSON Endpoint
-// ---------------------------------------------------------------------------
-
 router.get('/', async (req, res) => {
-  // Unauthenticated requests
   if (!req.user) {
-    if (isJsonRequest(req)) {
-      return res.status(401).json({ success: false, error: 'UNAUTHORIZED', message: 'Sign in to access your contribution streak.' });
-    }
+    if (isJsonRequest(req)) return res.status(401).json({ success: false, error: 'UNAUTHORIZED', message: 'Sign in to access your contribution streak.' });
     return res.redirect('/login');
   }
-
   try {
-    // Auto-record today's visit
     const streak = await streakService.recordActivity(req.user.id, 'streak_page_visit');
-
     if (isJsonRequest(req)) {
-      return res.json({
-        success: true,
-        user: {
-          id: req.user.id,
-          username: req.user.username,
-          name: req.user.name || req.user.username
-        },
-        streak
-      });
+      return res.json({ success: true, user: { id: req.user.id, username: req.user.username, name: req.user.name || req.user.username }, streak });
     }
-
-    res.render('streak', {
-      siteName: 'DevNexus',
-      activePage: 'streak',
-      user: req.user,
-      streak
-    });
+    res.render('streak', { siteName: 'DevNexus', activePage: 'streak', user: req.user, streak });
   } catch (err) {
     console.error('[DevNexus Streak Error]:', err);
-    if (isJsonRequest(req)) {
-      return res.status(500).json({ success: false, error: 'Failed to retrieve streak metrics.' });
-    }
-    res.status(500).render('error', {
-      siteName: 'DevNexus',
-      activePage: 'streak',
-      statusCode: 500,
-      title: 'Streak Service Error',
-      message: 'Failed to retrieve your contribution streak. Please try again.',
-      actionUrl: '/dashboard',
-      actionText: 'Return to Dashboard'
-    });
+    if (isJsonRequest(req)) return res.status(500).json({ success: false, error: 'Failed to retrieve streak metrics.' });
+    res.status(500).render('error', { siteName: 'DevNexus', activePage: 'streak', statusCode: 500, title: 'Streak Service Error', message: 'Failed to retrieve your contribution streak. Please try again.', actionUrl: '/dashboard', actionText: 'Return to Dashboard' });
   }
 });
-
-// ---------------------------------------------------------------------------
-// 2. POST /api/streak/ping or /streak/ping — Record Daily Action
-// ---------------------------------------------------------------------------
 
 router.post(['/ping', '/api/ping'], requireAuth, async (req, res) => {
   try {
     const activityType = (req.body && req.body.activityType) ? String(req.body.activityType).slice(0, 50) : 'manual_checkin';
     const streak = await streakService.recordActivity(req.user.id, activityType);
-    res.json({
-      success: true,
-      message: 'Contribution activity recorded successfully.',
-      streak
-    });
+    res.json({ success: true, message: 'Contribution activity recorded successfully.', streak });
   } catch (err) {
     console.error('[DevNexus Streak Ping Error]:', err);
     res.status(500).json({ success: false, error: 'Failed to record streak activity.' });
   }
 });
 
-// ---------------------------------------------------------------------------
-// 3. POST /api/streak/freeze or /streak/freeze — Activate Streak Freeze
-// ---------------------------------------------------------------------------
-
 router.post(['/freeze', '/api/freeze'], requireAuth, async (req, res) => {
   try {
     const result = streakService.useStreakFreeze(req.user.id);
-    if (!result.success) {
-      return res.status(400).json(result);
-    }
+    if (!result.success) return res.status(400).json(result);
     res.json(result);
   } catch (err) {
     console.error('[DevNexus Streak Freeze Error]:', err);
@@ -110,44 +56,15 @@ router.post(['/freeze', '/api/freeze'], requireAuth, async (req, res) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// 4. GET /streak/:username or /api/streak/:username — Public User Streak
-// ---------------------------------------------------------------------------
-
 router.get('/:username', async (req, res) => {
   const username = (req.params.username || '').trim();
   const publicData = streakService.getPublicStreak(username);
-
   if (!publicData) {
-    if (isJsonRequest(req)) {
-      return res.status(404).json({ success: false, error: 'USER_NOT_FOUND', message: `User @${username} not found.` });
-    }
-    return res.status(404).render('error', {
-      siteName: 'DevNexus',
-      activePage: 'streak',
-      statusCode: 404,
-      title: 'Developer Not Found',
-      message: `No developer with username @${username} exists on DevNexus.`,
-      actionUrl: '/leaderboard',
-      actionText: 'View Leaderboard'
-    });
+    if (isJsonRequest(req)) return res.status(404).json({ success: false, error: 'USER_NOT_FOUND', message: `User @${username} not found.` });
+    return res.status(404).render('error', { siteName: 'DevNexus', activePage: 'streak', statusCode: 404, title: 'Developer Not Found', message: `No developer with username @${username} exists on DevNexus.`, actionUrl: '/leaderboard', actionText: 'View Leaderboard' });
   }
-
-  if (isJsonRequest(req)) {
-    return res.json({
-      success: true,
-      ...publicData
-    });
-  }
-
-  res.render('streak', {
-    siteName: 'DevNexus',
-    activePage: 'streak',
-    user: req.user || null,
-    targetUser: publicData.user,
-    streak: publicData.streak
-  });
+  if (isJsonRequest(req)) return res.json({ success: true, ...publicData });
+  res.render('streak', { siteName: 'DevNexus', activePage: 'streak', user: req.user || null, targetUser: publicData.user, streak: publicData.streak });
 });
 
 module.exports = router;
-
