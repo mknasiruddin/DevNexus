@@ -7,7 +7,10 @@
 const express = require('express');
 const router = express.Router();
 
-const { searchRepositories, calculateRepositoryHealth } = require('../services/githubService');
+const {
+  searchRepositories,
+  calculateRepositoryHealth
+} = require('../services/githubService');
 
 const AVAILABLE_LANGUAGES = [
   'All',
@@ -51,6 +54,25 @@ const SORT_OPTIONS = [
   { value: 'updated', label: 'Recently Updated' }
 ];
 
+// Convert stored user skills into an array
+function parseUserSkills(user) {
+  if (!user || !user.skills) return [];
+
+  try {
+    const parsed = typeof user.skills === 'string'
+      ? JSON.parse(user.skills)
+      : user.skills;
+
+    return Array.isArray(parsed)
+      ? parsed.map(skill =>
+          typeof skill === 'string' ? skill : skill?.name
+        ).filter(Boolean)
+      : [];
+  } catch (error) {
+    return [];
+  }
+}
+
 // GET /projects - Project Discovery Page
 router.get('/', async (req, res) => {
   try {
@@ -59,8 +81,15 @@ router.get('/', async (req, res) => {
     const language = (req.query.language || 'all').trim();
     const topic = (req.query.topic || 'all').trim();
     const stars = parseInt(req.query.stars || '0', 10) || 0;
-    const sort = ['stars', 'forks', 'updated'].includes(req.query.sort) ? req.query.sort : 'stars';
+
+    const sort = ['stars', 'forks', 'updated'].includes(req.query.sort)
+      ? req.query.sort
+      : 'stars';
+
     const page = Math.max(1, parseInt(req.query.page || '1', 10) || 1);
+
+    // Get skills of the logged-in user
+    const userSkills = parseUserSkills(req.user);
 
     const searchResult = await searchRepositories(
       {
@@ -71,13 +100,19 @@ router.get('/', async (req, res) => {
         sort,
         order: 'desc',
         page,
-        perPage: 12
+        perPage: 12,
+        userSkills
       },
       githubToken
     );
 
     // If client requested JSON
-    if (req.xhr || (req.headers.accept && req.headers.accept.includes('application/json')) || req.query.format === 'json') {
+    if (
+      req.xhr ||
+      (req.headers.accept &&
+        req.headers.accept.includes('application/json')) ||
+      req.query.format === 'json'
+    ) {
       return res.json({
         success: !searchResult.error,
         ...searchResult,
@@ -99,20 +134,22 @@ router.get('/', async (req, res) => {
       cached: searchResult.cached || false,
       error: searchResult.error || null,
       errorMessage: searchResult.errorMessage || null,
-      // Active filter states
+
       activeQuery: query,
       activeLanguage: language,
       activeTopic: topic,
       activeStars: stars,
       activeSort: sort,
-      // Filter options lists
+
       availableLanguages: AVAILABLE_LANGUAGES,
       availableTopics: AVAILABLE_TOPICS,
       starOptions: STAR_OPTIONS,
       sortOptions: SORT_OPTIONS
     });
+
   } catch (err) {
     console.error('[DevNexus] Project discovery error:', err);
+
     res.status(500).render('error', {
       siteName: 'DevNexus',
       title: 'Project Discovery Unavailable',
@@ -123,15 +160,19 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /projects/api/health - Evaluate Repository Health Score from metadata payload
+// POST /projects/api/health - Evaluate Repository Health
 router.post('/api/health', (req, res) => {
   try {
-    const repoPayload = req.body && typeof req.body === 'object' ? req.body : null;
+    const repoPayload =
+      req.body && typeof req.body === 'object' ? req.body : null;
+
     const health = calculateRepositoryHealth(repoPayload);
+
     res.json({
       success: true,
       health
     });
+
   } catch (err) {
     res.status(400).json({
       success: false,
@@ -144,11 +185,18 @@ router.post('/api/health', (req, res) => {
 router.get('/:owner/:repo', (req, res) => {
   const owner = (req.params.owner || '').trim();
   const repo = (req.params.repo || '').trim();
+
   const validSegment = /^[a-zA-Z0-9._-]{1,100}$/;
-  if (!owner || !repo || !validSegment.test(owner) || !validSegment.test(repo)) {
+
+  if (!owner || !repo ||
+      !validSegment.test(owner) ||
+      !validSegment.test(repo)) {
     return res.redirect('/projects');
   }
-  res.redirect(`https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`);
+
+  res.redirect(
+    `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
+  );
 });
 
 module.exports = router;

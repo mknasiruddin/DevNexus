@@ -486,76 +486,193 @@ async function searchIssues({ query = '', label = 'all', language = 'all', diffi
 // ----------------------------------------------------
 // 4. Algorithmic Skill Compatibility Calculator
 // ----------------------------------------------------
+function normalizeCompatibilitySkills(skills = []) {
+  const values = Array.isArray(skills) ? skills : [];
 
-function calculateCompatibility(issue, repoName, labels, userSkills = []) {
-  // Base weights: Language overlap (45%), Difficulty (30%), Community engagement (15%), Recency (10%)
-  let skillOverlapScore = 70;
-  let difficultyScore = 75;
+  return [...new Set(
+    values
+      .map(skill => {
+        if (typeof skill === 'string') return skill;
+        if (skill && typeof skill.name === 'string') return skill.name;
+        return '';
+      })
+      .map(skill => skill.trim().toLowerCase())
+      .filter(Boolean)
+  )];
+}
+
+function calculateCompatibility(issue, repoName, labels, userSkills = [], requestedDifficulty = 'all') {
+  // Weighted profile matching: skills 45%, difficulty 30%, engagement 15%, freshness 10%.
+  const skills = normalizeCompatibilitySkills(userSkills);
+  const labelNames = (labels || []).map(label => String(label.name || '').toLowerCase());
+
+  const textCorpus = [
+    repoName,
+    issue.title,
+    issue.body,
+    ...(labels || []).map(label => label.name)
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  const skillAliases = {
+    js: ['javascript', 'js'],
+    javascript: ['javascript', 'js', 'node.js', 'nodejs'],
+    ts: ['typescript', 'ts'],
+    typescript: ['typescript', 'ts'],
+    py: ['python', 'py'],
+    python: ['python', 'py'],
+    react: ['react', 'react.js'],
+    'react.js': ['react', 'react.js'],
+    node: ['node', 'node.js', 'nodejs'],
+    'node.js': ['node', 'node.js', 'nodejs'],
+    'c++': ['c++', 'cpp'],
+    cpp: ['cpp', 'c++'],
+    'c#': ['c#', 'csharp'],
+    csharp: ['csharp', 'c#'],
+    go: ['golang', 'go'],
+    golang: ['golang', 'go']
+  };
+
+  const matchedSkills = skills.filter(skill => {
+    const terms = skillAliases[skill] || [skill];
+
+    return terms.some(term => {
+      const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+      const pattern = new RegExp(
+        `(^|[^a-z0-9+#])${escapedTerm}($|[^a-z0-9+#])`,
+        'i'
+      );
+
+      return pattern.test(textCorpus);
+    });
+  });
+
+  const skillOverlapScore = skills.length === 0
+    ? 80
+    : Math.round((matchedSkills.length / skills.length) * 100);
+
+  const isGoodFirstIssue = labelNames.some(name =>
+    name.includes('good first issue') || name.includes('beginner')
+  );
+
+  const isHelpWanted = labelNames.some(name => name.includes('help wanted'));
+
+  let difficultyScore = isGoodFirstIssue ? 95 : isHelpWanted ? 90 : 75;
+
+  const requested = String(requestedDifficulty || 'all').toLowerCase();
+
+  if (requested !== 'all') {
+    const issueLevel = isGoodFirstIssue
+      ? 'beginner'
+      : isHelpWanted
+        ? 'intermediate'
+        : 'advanced';
+
+    difficultyScore = requested === issueLevel
+      ? Math.min(100, difficultyScore + 5)
+      : Math.max(40, difficultyScore - 20);
+  }
+
+  const comments = Number(issue.comments || 0);
+
   let engagementScore = 70;
-  let recencyScore = 80;
 
-  // Check language in repo name or title or labels
-  const textCorpus = `${repoName} ${issue.title} ${(labels || []).map(l => l.name).join(' ')}`.toLowerCase();
+  if (comments >= 1 && comments <= 4) engagementScore = 95;
+  else if (comments === 0) engagementScore = 85;
+  else if (comments > 10) engagementScore = 65;
 
-  const userLangNames = userSkills.map(s => (typeof s === 'string' ? s : s.name).toLowerCase());
-  const hasMatchingLang = userLangNames.some(lang => textCorpus.includes(lang));
+  const createdAt = new Date(issue.created_at).getTime();
 
-  if (hasMatchingLang) {
-    skillOverlapScore = 95;
-  } else if (userLangNames.length === 0) {
-    skillOverlapScore = 80;
-  } else {
-    skillOverlapScore = 65;
-  }
+  const ageDays = Number.isFinite(createdAt)
+    ? Math.max(0, (Date.now() - createdAt) / 86400000)
+    : 60;
 
-  // Difficulty alignment
-  if (labels.some(l => l.isGfi)) {
-    difficultyScore = 95;
-  } else if (labels.some(l => l.isHw)) {
-    difficultyScore = 90;
-  }
-
-  // Engagement score: 1 to 5 comments is the sweet spot for open issues welcoming assistance
-  const comments = issue.comments || 0;
-  if (comments >= 1 && comments <= 4) {
-    engagementScore = 95;
-  } else if (comments === 0) {
-    engagementScore = 85;
-  } else if (comments > 10) {
-    engagementScore = 65; // Highly congested discussions
-  }
-
-  // Recency score
-  const ageDays = (Date.now() - new Date(issue.created_at).getTime()) / (1000 * 3600 * 24);
-  if (ageDays <= 14) {
-    recencyScore = 98;
-  } else if (ageDays <= 60) {
-    recencyScore = 85;
-  } else {
-    recencyScore = 60;
-  }
+  const recencyScore = ageDays <= 14 ? 98 : ageDays <= 60 ? 85 : 60;
 
   const finalScore = Math.round(
-    (skillOverlapScore * 0.45) +
-    (difficultyScore * 0.30) +
-    (engagementScore * 0.15) +
-    (recencyScore * 0.10)
+    skillOverlapScore * 0.45 +
+    difficultyScore * 0.30 +
+    engagementScore * 0.15 +
+    recencyScore * 0.10
   );
 
   return {
-    score: Math.min(99, Math.max(50, finalScore)),
+    score: Math.min(99, Math.max(0, finalScore)),
     breakdown: {
       skillOverlap: skillOverlapScore,
       difficultyAlignment: difficultyScore,
-      mentorSupport: engagementScore
+      mentorSupport: engagementScore,
+      recency: recencyScore,
+      matchedSkills
     }
   };
 }
 
 // ----------------------------------------------------
-// Helpers
+// Repository Skill-Based Compatibility Calculator
 // ----------------------------------------------------
 
+function calculateRepositoryCompatibility(repository, userSkills = []) {
+  const skills = normalizeCompatibilitySkills(userSkills);
+
+  const repositoryText = [
+    repository.name,
+    repository.description,
+    repository.language,
+    ...(repository.topics || [])
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  const skillAliases = {
+    js: ['javascript', 'js'],
+    javascript: ['javascript', 'js', 'node.js', 'nodejs'],
+    ts: ['typescript', 'ts'],
+    typescript: ['typescript', 'ts'],
+    py: ['python', 'py'],
+    python: ['python', 'py'],
+    react: ['react', 'react.js'],
+    'react.js': ['react', 'react.js'],
+    node: ['node', 'node.js', 'nodejs'],
+    'node.js': ['node', 'node.js', 'nodejs'],
+    'c++': ['c++', 'cpp'],
+    cpp: ['cpp', 'c++'],
+    'c#': ['c#', 'csharp'],
+    csharp: ['csharp', 'c#'],
+    go: ['golang', 'go'],
+    golang: ['golang', 'go']
+  };
+
+  const matchedSkills = skills.filter(skill => {
+    const terms = skillAliases[skill] || [skill];
+
+    return terms.some(term => {
+      const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const pattern = new RegExp(
+        `(^|[^a-z0-9+#])${escapedTerm}($|[^a-z0-9+#])`,
+        'i'
+      );
+
+      return pattern.test(repositoryText);
+    });
+  });
+
+  const score = skills.length === 0
+    ? 0
+    : Math.round((matchedSkills.length / skills.length) * 100);
+
+  return {
+    score,
+    matchedSkills,
+    totalSkills: skills.length
+  };
+}
+
+
+// ----------------------------------------------------
+// Helpers
+// ----------------------------------------------------
 function formatRelativeTime(dateString) {
   if (!dateString) return 'recently';
   const now = Date.now();
@@ -608,10 +725,15 @@ async function searchRepositories({
   sort = 'stars',
   order = 'desc',
   page = 1,
-  perPage = 12
+  perPage = 12,
+  userSkills = []
 } = {}, token = null) {
   const safePage = Math.max(1, Math.min(80, parseInt(page, 10) || 1));
   const safePerPage = Math.max(1, Math.min(50, parseInt(perPage, 10) || 12));
+
+  const normalizedUserSkills = normalizeCompatibilitySkills(userSkills);
+  const skillCacheKey = normalizedUserSkills.join(',');
+
   let qParts = [];
 
   if (query && query.trim() !== '') {
@@ -631,29 +753,46 @@ async function searchRepositories({
     qParts.push(`stars:>=${numericStars}`);
   }
 
-  // If no specific criteria are specified, default to repositories with stars >= 50
   if (qParts.length === 0) {
     qParts.push('stars:>=50');
   }
 
   const queryString = qParts.join(' ');
-  const cacheKey = `repo_search:${queryString}:${sort}:${order}:${safePage}:${safePerPage}`;
+
+  // Include user skills in cache key to prevent mixing personalized results.
+  const cacheKey = `repo_search:${queryString}:${sort}:${order}:${safePage}:${safePerPage}:${skillCacheKey}`;
 
   // Check cache (5 min TTL)
   const cached = getCached(cacheKey);
+
   if (cached) {
     const cachedRepos = Array.isArray(cached.data?.repositories)
-      ? cached.data.repositories.map(r => ({
-          ...r,
-          health: r.health || calculateRepositoryHealth({
+      ? cached.data.repositories.map(r => {
+          const compatibility = calculateRepositoryCompatibility(
+            r,
+            normalizedUserSkills
+          );
+
+          return {
             ...r,
-            updated_at: r.updatedAtExact,
-            stargazers_count: r.stars,
-            forks_count: r.forks,
-            open_issues_count: r.openIssues
-          })
-        }))
+            compatibilityScore: compatibility.score,
+            matchedSkills: compatibility.matchedSkills,
+            totalSkills: compatibility.totalSkills,
+            health: r.health || calculateRepositoryHealth({
+              ...r,
+              updated_at: r.updatedAtExact,
+              stargazers_count: r.stars,
+              forks_count: r.forks,
+              open_issues_count: r.openIssues
+            })
+          };
+        })
       : [];
+
+    cachedRepos.sort(
+      (a, b) => b.compatibilityScore - a.compatibilityScore
+    );
+
     return {
       ...cached.data,
       repositories: cachedRepos,
@@ -663,11 +802,13 @@ async function searchRepositories({
   }
 
   let sortParam = '';
+
   if (['stars', 'forks', 'updated'].includes(sort)) {
     sortParam = `&sort=${sort}&order=${order === 'asc' ? 'asc' : 'desc'}`;
   }
 
   const url = `${GITHUB_API_BASE}/search/repositories?q=${encodeURIComponent(queryString)}${sortParam}&page=${safePage}&per_page=${safePerPage}`;
+
   const { res, networkError } = await safeGithubFetch(url, token);
 
   if (networkError || !res) {
@@ -713,22 +854,30 @@ async function searchRepositories({
 
   const data = await res.json();
   const totalCount = data.total_count || 0;
-  // GitHub limits search pagination to top 1,000 results
-  const totalPages = Math.min(Math.ceil(totalCount / safePerPage), Math.floor(1000 / safePerPage));
+
+  // GitHub limits search pagination to the top 1,000 results.
+  const totalPages = Math.min(
+    Math.ceil(totalCount / safePerPage),
+    Math.floor(1000 / safePerPage)
+  );
 
   const repositories = (data.items || []).map(item => {
     const langKey = (item.language || '').toLowerCase();
     const langColor = LANGUAGE_COLORS[langKey] || '#818CF8';
     const health = calculateRepositoryHealth(item);
 
-    return {
+    const repository = {
       id: item.id,
       name: item.name,
       fullName: item.full_name,
       owner: {
         login: item.owner ? item.owner.login : '',
-        avatarUrl: item.owner ? item.owner.avatar_url : 'https://avatars.githubusercontent.com/u/9919?v=4',
-        htmlUrl: item.owner ? item.owner.html_url : `https://github.com/${item.name}`
+        avatarUrl: item.owner
+          ? item.owner.avatar_url
+          : 'https://avatars.githubusercontent.com/u/9919?v=4',
+        htmlUrl: item.owner
+          ? item.owner.html_url
+          : `https://github.com/${item.name}`
       },
       htmlUrl: item.html_url,
       description: item.description || 'No description provided.',
@@ -738,12 +887,31 @@ async function searchRepositories({
       forks: item.forks_count || 0,
       openIssues: item.open_issues_count || 0,
       topics: Array.isArray(item.topics) ? item.topics.slice(0, 6) : [],
-      license: item.license ? (item.license.spdx_id || item.license.name) : null,
+      license: item.license
+        ? (item.license.spdx_id || item.license.name)
+        : null,
       updatedAt: formatRelativeTime(item.updated_at),
       updatedAtExact: item.updated_at,
       health
     };
+
+    const compatibility = calculateRepositoryCompatibility(
+      repository,
+      normalizedUserSkills
+    );
+
+    return {
+      ...repository,
+      compatibilityScore: compatibility.score,
+      matchedSkills: compatibility.matchedSkills,
+      totalSkills: compatibility.totalSkills
+    };
   });
+
+  // Show repositories with the highest skill compatibility first.
+  repositories.sort(
+    (a, b) => b.compatibilityScore - a.compatibilityScore
+  );
 
   const payload = {
     repositories,
@@ -753,10 +921,14 @@ async function searchRepositories({
     totalPages
   };
 
-  setCache(cacheKey, payload, { rateLimit }, 300); // 5 min TTL
-  return { ...payload, rateLimit, cached: false };
-}
+  setCache(cacheKey, payload, { rateLimit }, 300);
 
+  return {
+    ...payload,
+    rateLimit,
+    cached: false
+  };
+}
 // ----------------------------------------------------
 // 6. Contributor Leaderboard Synchronization
 // ----------------------------------------------------
