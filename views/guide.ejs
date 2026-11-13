@@ -191,6 +191,152 @@
     }
     .code-box .comment { color: var(--muted); }
     .code-box .cmd { color: #818cf8; font-weight: 600; }
+
+    /* First Contribution Roadmap (14 Stages) Styles */
+    .roadmap-hero-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px 28px;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow);
+    }
+    .roadmap-progress-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .roadmap-progress-bar-wrap {
+      width: 100%;
+      height: 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-bottom: 14px;
+    }
+    .roadmap-progress-bar-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 999px;
+      transition: width 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    .roadmap-filter-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .roadmap-stage-list {
+      display: grid;
+      gap: 18px;
+    }
+    .roadmap-stage-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 22px 24px;
+      box-shadow: var(--shadow);
+      transition: border-color .2s, transform .2s;
+    }
+    .roadmap-stage-card.completed {
+      border-color: rgba(63, 185, 80, 0.45);
+      background: color-mix(in srgb, var(--surface) 92%, rgba(63, 185, 80, 0.08));
+    }
+    .roadmap-stage-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .roadmap-stage-title-wrap {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      flex: 1;
+      min-width: 240px;
+    }
+    .roadmap-step-num {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      font-size: 15px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--accent-text);
+      flex-shrink: 0;
+    }
+    .roadmap-stage-card.completed .roadmap-step-num {
+      background: rgba(63, 185, 80, 0.18);
+      border-color: rgba(63, 185, 80, 0.5);
+      color: #4ade80;
+    }
+    .roadmap-phase-tag {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--accent-text);
+      margin-bottom: 2px;
+      display: block;
+    }
+    .roadmap-stage-title {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .roadmap-toggle-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text);
+      transition: all .18s;
+    }
+    .roadmap-toggle-btn:hover {
+      border-color: var(--border-accent);
+    }
+    .roadmap-toggle-btn.is-done {
+      background: rgba(63, 185, 80, 0.16);
+      border-color: rgba(63, 185, 80, 0.45);
+      color: #4ade80;
+    }
+    .roadmap-instructions {
+      margin: 10px 0 14px;
+      padding-left: 20px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+    .roadmap-instructions li {
+      margin-bottom: 6px;
+    }
+    .roadmap-meta-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      font-size: 13px;
+    }
   </style>
 </head>
 <body>
@@ -205,14 +351,18 @@
 
       <!-- Header -->
       <header class="guide-header">
-        <h1>DevNexus Developer Guide &amp; Knowledge Base</h1>
+        <h1>DevNexus Developer Guide &amp; First Contribution Roadmap</h1>
         <p>
-          Master the open-source contribution lifecycle: from discovering beginner-friendly issues to crafting approved, high-impact pull requests.
+          Master the 14-stage open-source contribution lifecycle: from configuring Git and discovering beginner-friendly repositories to opening and merging your first Pull Request.
         </p>
       </header>
 
       <!-- Navigation Tabs -->
       <nav class="guide-tabs" aria-label="Guide section tabs">
+        <a href="/roadmap" class="guide-tab-link <%= activeTab === 'roadmap' ? 'active' : '' %>">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          First Contribution Roadmap (14 Stages)
+        </a>
         <a href="/learn" class="guide-tab-link <%= activeTab === 'guide' ? 'active' : '' %>">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
           Contribution Guide
@@ -441,12 +591,295 @@
             </div>
           </section>
         </article>
+      <% } else if (activeTab === 'roadmap') { %>
+        <%
+          const rm = locals.roadmap || { stages: [], completedCount: 0, totalStages: 14, percentage: 0, nextStage: null };
+          const rmStages = Array.isArray(rm.stages) ? rm.stages : [];
+        %>
+        <!-- TAB: INTERACTIVE 14-STAGE FIRST CONTRIBUTION ROADMAP -->
+        <section aria-label="First Contribution Roadmap">
+          <div class="roadmap-hero-card">
+            <div class="roadmap-progress-top">
+              <div>
+                <span class="guide-step-badge">Interactive 14-Stage Checklist</span>
+                <h2 style="margin: 4px 0 6px; font-size: 22px; font-weight: 800;">First Open-Source Contribution Roadmap</h2>
+                <p style="margin: 0; font-size: 14px; color: var(--muted);">
+                  <% if (locals.user) { %>
+                    Track your progress through all 14 stages. Completed steps are persisted to your SQLite account (<strong>@<%= user.username %></strong>) and boost your Contribution Readiness Score.
+                  <% } else { %>
+                    Follow the 14 stages below to make your first Pull Request. <a href="/login" style="color: var(--link); font-weight: 600; text-decoration: underline;">Sign in</a> to save your progress in the SQLite database.
+                  <% } %>
+                </p>
+              </div>
+              <div style="text-align: right;">
+                <div style="font-size: 26px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums;">
+                  <span id="roadmap-completed-count"><%= rm.completedCount %></span> / <%= rm.totalStages %> <span style="font-size: 15px; color: var(--accent-text);">(<span id="roadmap-percentage-text"><%= rm.percentage %></span>%)</span>
+                </div>
+                <div style="font-size: 12px; color: var(--muted);" id="roadmap-next-stage-hint">
+                  <% if (rm.completedCount === rm.totalStages) { %>
+                    All 14 stages completed! Ready to submit Pull Requests.
+                  <% } else if (rm.nextStage) { %>
+                    Next up: Stage <%= rm.nextStage.stepNumber %> &mdash; <%= rm.nextStage.title %>
+                  <% } %>
+                </div>
+              </div>
+            </div>
+
+            <div class="roadmap-progress-bar-wrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<%= rm.percentage %>" id="roadmap-progressbar">
+              <div class="roadmap-progress-bar-fill" id="roadmap-progress-fill" style="width: <%= rm.percentage %>%;"></div>
+            </div>
+
+            <div class="roadmap-filter-bar">
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;" role="group" aria-label="Filter roadmap stages">
+                <button type="button" class="btn btn-sm roadmap-filter-btn btn-primary" data-filter="all">All 14 Stages</button>
+                <button type="button" class="btn btn-sm roadmap-filter-btn" data-filter="pending">Remaining</button>
+                <button type="button" class="btn btn-sm roadmap-filter-btn" data-filter="completed">Completed</button>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <% if (locals.user) { %>
+                  <button type="button" class="btn btn-sm" id="roadmap-reset-btn" title="Reset all 14 stages">Reset Progress</button>
+                  <a href="/dashboard" class="btn btn-sm btn-primary">View Readiness Score &rarr;</a>
+                <% } else { %>
+                  <a href="/login" class="btn btn-sm btn-primary">Sign In to Save Progress</a>
+                <% } %>
+              </div>
+            </div>
+          </div>
+
+          <div class="roadmap-stage-list" id="roadmap-stage-list">
+            <% rmStages.forEach(function(stage) { %>
+              <article class="roadmap-stage-card <%= stage.completed ? 'completed' : '' %>"
+                       id="roadmap-stage-<%= stage.stepNumber %>"
+                       data-step-number="<%= stage.stepNumber %>"
+                       data-completed="<%= stage.completed ? 'true' : 'false' %>">
+                <div class="roadmap-stage-head">
+                  <div class="roadmap-stage-title-wrap">
+                    <div class="roadmap-step-num" aria-hidden="true"><%= stage.stepNumber %></div>
+                    <div>
+                      <span class="roadmap-phase-tag"><%= stage.phase %> &bull; Stage <%= stage.stepNumber %> of 14</span>
+                      <h3 class="roadmap-stage-title"><%= stage.title %></h3>
+                    </div>
+                  </div>
+
+                  <div>
+                    <% if (locals.user) { %>
+                      <button type="button"
+                              class="roadmap-toggle-btn <%= stage.completed ? 'is-done' : '' %>"
+                              data-step-number="<%= stage.stepNumber %>"
+                              aria-pressed="<%= stage.completed ? 'true' : 'false' %>">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+                          <% if (stage.completed) { %>
+                            <path d="M20 6L9 17l-5-5"/>
+                          <% } else { %>
+                            <circle cx="12" cy="12" r="9"/>
+                          <% } %>
+                        </svg>
+                        <span class="toggle-label"><%= stage.completed ? 'Completed' : 'Mark Completed' %></span>
+                      </button>
+                    <% } else { %>
+                      <a href="/login" class="roadmap-toggle-btn" title="Sign in to track stage completion">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>
+                        <span>Sign in to track</span>
+                      </a>
+                    <% } %>
+                  </div>
+                </div>
+
+                <p style="margin: 0 0 10px; font-size: 14.5px; color: var(--text); font-weight: 500;">
+                  <%= stage.summary %>
+                </p>
+
+                <ol class="roadmap-instructions">
+                  <% (stage.instructions || []).forEach(function(inst) { %>
+                    <li><%= inst %></li>
+                  <% }); %>
+                </ol>
+
+                <% if (stage.commands && stage.commands.length > 0) { %>
+                  <div class="code-box" style="margin: 10px 0;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:11.5px; color:var(--muted);">
+                      <span>Commands &amp; Terminal Workflow</span>
+                      <button type="button" class="btn btn-sm copy-cmd-btn" style="padding:2px 8px; font-size:11px;" data-cmd="<%= stage.commands.filter(c => !c.startsWith('#')).join('\n') %>">Copy</button>
+                    </div>
+                    <% stage.commands.forEach(function(line) { %>
+                      <% if (line.startsWith('#')) { %>
+                        <span class="comment"><%= line %></span><br>
+                      <% } else { %>
+                        <span class="cmd">$</span> <%= line %><br>
+                      <% } %>
+                    <% }); %>
+                  </div>
+                <% } %>
+
+                <% if (stage.example) { %>
+                  <div class="guide-callout" style="margin: 10px 0; padding: 10px 14px; font-size: 13px;">
+                    <strong>Practical Tip:</strong> <%= stage.example %>
+                  </div>
+                <% } %>
+
+                <div class="roadmap-meta-footer">
+                  <span style="color: var(--muted); font-size: 12.5px;">
+                    Official Reference:
+                    <a href="<%= stage.docUrl %>" target="_blank" rel="noopener noreferrer" style="color: var(--link); font-weight: 600; text-decoration: underline;">
+                      <%= stage.docTitle %> &nearr;
+                    </a>
+                  </span>
+                  <% if (stage.completed && stage.completedAt) { %>
+                    <span class="stage-timestamp" style="font-size: 12px; color: #4ade80;">
+                      Saved in SQLite
+                    </span>
+                  <% } else { %>
+                    <span class="stage-timestamp" style="font-size: 12px; color: var(--muted);">
+                      Stage <%= stage.stepNumber %> / 14
+                    </span>
+                  <% } %>
+                </div>
+              </article>
+            <% }); %>
+          </div>
+        </section>
       <% } %>
 
     </div>
   </main>
 
+  <!-- Toast notification for Roadmap interaction -->
+  <div class="toast" id="guide-toast" role="status" aria-live="polite">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.2 3L13 4.5"/></svg>
+    <span id="guide-toast-msg"></span>
+  </div>
+
   <!-- ======================= FOOTER ======================= -->
   <%- include('partials/footer') %>
+
+  <script>
+    (function () {
+      function showToast(msg) {
+        var toast = document.getElementById('guide-toast');
+        var text = document.getElementById('guide-toast-msg');
+        if (!toast || !text) return;
+        text.textContent = msg;
+        toast.classList.add('show');
+        setTimeout(function () { toast.classList.remove('show'); }, 2800);
+      }
+
+      // Copy command buttons
+      document.querySelectorAll('.copy-cmd-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var cmd = btn.getAttribute('data-cmd') || '';
+          if (!cmd) return;
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(cmd).then(function () {
+              showToast('Command copied to clipboard!');
+            }).catch(function () {});
+          }
+        });
+      });
+
+      // Stage toggle buttons (persist to SQLite via POST /api/roadmap/step)
+      document.querySelectorAll('.roadmap-toggle-btn[data-step-number]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var stepNumber = parseInt(btn.getAttribute('data-step-number'), 10);
+          var card = document.getElementById('roadmap-stage-' + stepNumber);
+          if (!card || !stepNumber) return;
+
+          var currentlyCompleted = card.getAttribute('data-completed') === 'true';
+          var nextCompleted = !currentlyCompleted;
+          btn.disabled = true;
+
+          fetch('/api/roadmap/step', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ stepNumber: stepNumber, completed: nextCompleted })
+          })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              btn.disabled = false;
+              if (!data || !data.success) {
+                showToast((data && data.error) || 'Could not update roadmap progress.');
+                return;
+              }
+
+              card.setAttribute('data-completed', nextCompleted ? 'true' : 'false');
+              card.classList.toggle('completed', nextCompleted);
+              btn.classList.toggle('is-done', nextCompleted);
+              btn.setAttribute('aria-pressed', nextCompleted ? 'true' : 'false');
+
+              var labelEl = btn.querySelector('.toggle-label');
+              if (labelEl) labelEl.textContent = nextCompleted ? 'Completed' : 'Mark Completed';
+
+              var countEl = document.getElementById('roadmap-completed-count');
+              var pctEl = document.getElementById('roadmap-percentage-text');
+              var fillEl = document.getElementById('roadmap-progress-fill');
+              var barEl = document.getElementById('roadmap-progressbar');
+              var hintEl = document.getElementById('roadmap-next-stage-hint');
+
+              if (countEl) countEl.textContent = String(data.completedCount);
+              if (pctEl) pctEl.textContent = String(data.percentage);
+              if (fillEl) fillEl.style.width = data.percentage + '%';
+              if (barEl) barEl.setAttribute('aria-valuenow', String(data.percentage));
+              if (hintEl) {
+                if (data.isAllCompleted) {
+                  hintEl.textContent = 'All 14 stages completed! Ready to submit Pull Requests.';
+                } else if (data.nextStage) {
+                  hintEl.textContent = 'Next up: Stage ' + data.nextStage.stepNumber + ' — ' + data.nextStage.title;
+                }
+              }
+
+              showToast(nextCompleted
+                ? 'Stage #' + stepNumber + ' saved as completed in SQLite!'
+                : 'Stage #' + stepNumber + ' marked incomplete.');
+            })
+            .catch(function () {
+              btn.disabled = false;
+              showToast('Network error while saving roadmap progress.');
+            });
+        });
+      });
+
+      // Filter buttons (All / Remaining / Completed)
+      var filterBtns = document.querySelectorAll('.roadmap-filter-btn');
+      filterBtns.forEach(function (fBtn) {
+        fBtn.addEventListener('click', function () {
+          var mode = fBtn.getAttribute('data-filter') || 'all';
+          filterBtns.forEach(function (b) { b.classList.remove('btn-primary'); });
+          fBtn.classList.add('btn-primary');
+
+          document.querySelectorAll('.roadmap-stage-card').forEach(function (card) {
+            var isDone = card.getAttribute('data-completed') === 'true';
+            if (mode === 'all') {
+              card.style.display = '';
+            } else if (mode === 'completed') {
+              card.style.display = isDone ? '' : 'none';
+            } else if (mode === 'pending') {
+              card.style.display = !isDone ? '' : 'none';
+            }
+          });
+        });
+      });
+
+      // Reset roadmap progress button
+      var resetBtn = document.getElementById('roadmap-reset-btn');
+      if (resetBtn) {
+        resetBtn.addEventListener('click', function () {
+          resetBtn.disabled = true;
+          fetch('/api/roadmap/reset', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }
+          })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              resetBtn.disabled = false;
+              if (data && data.success) {
+                window.location.reload();
+              }
+            })
+            .catch(function () {
+              resetBtn.disabled = false;
+            });
+        });
+      }
+    })();
+  </script>
 </body>
 </html>

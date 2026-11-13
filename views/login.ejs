@@ -267,11 +267,11 @@
 
         <% if (currentMode === 'signup') { %>
           <!-- =================== SIGN UP FORM =================== -->
-          <form action="/signup" method="POST">
+          <form action="/auth/signup" method="POST">
             <div class="auth-field">
               <label for="reg-username">Username</label>
-              <input type="text" id="reg-username" name="username" placeholder="your-github-username" autocomplete="username" required>
-              <span class="field-hint">Alphanumeric, hyphens and underscores allowed</span>
+              <input type="text" id="reg-username" name="username" placeholder="your-github-username" autocomplete="username" minlength="3" maxlength="39" pattern="[a-zA-Z0-9_-]{3,39}" title="3 to 39 alphanumeric characters, hyphens, or underscores" required>
+              <span class="field-hint">3–39 alphanumeric characters, hyphens and underscores allowed</span>
             </div>
 
             <div class="auth-field">
@@ -298,15 +298,15 @@
           <div id="forgot-password-box" class="forgot-box">
             <h3 style="margin: 0 0 6px; font-size: 14px; font-weight: 700; color: var(--text);">Password Assistance</h3>
             <p style="margin: 0 0 10px; font-size: 12px; color: var(--muted); line-height: 1.4;">
-              Enter your registered username or email address below. You can also sign in instantly using GitHub OAuth.
+              Automated email password reset is disabled in this academic deployment. Submit your username/email to log an assistance request for the platform administrator, or sign in via GitHub OAuth above.
             </p>
             <form action="/forgot-password" method="POST" style="display: flex; gap: 8px;">
-              <input type="text" name="identifier" placeholder="your-github-username or name@company.com" required style="flex:1; height:36px; padding:0 10px; font-size:13px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); outline:none;">
-              <button type="submit" class="btn btn-sm btn-primary" style="font-size: 12.5px;">Send Reset</button>
+              <input type="text" name="identifier" placeholder="your-github-username or name@company.com" aria-label="Registered username or email" required style="flex:1; height:36px; padding:0 10px; font-size:13px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); outline:none;">
+              <button type="submit" class="btn btn-sm btn-primary" style="font-size: 12.5px;">Request Assistance</button>
             </form>
           </div>
 
-          <form action="/login" method="POST">
+          <form action="/auth/login" method="POST">
             <div class="auth-field">
               <label for="login-username">Username or Email</label>
               <input type="text" id="login-username" name="username" placeholder="your-github-username or name@company.com" autocomplete="username" required>
@@ -315,7 +315,7 @@
             <div class="auth-field">
               <div style="display:flex; justify-content:space-between; align-items:baseline;">
                 <label for="login-password">Password</label>
-                <a href="#forgot" onclick="toggleForgot(event)" style="font-size: 12px; color: var(--link); text-decoration: none;">Forgot password?</a>
+                <a href="#forgot" onclick="toggleForgot(event)" style="font-size: 12px; color: var(--link); text-decoration: none;">Password assistance?</a>
               </div>
               <input type="password" id="login-password" name="password" placeholder="Enter your password" autocomplete="current-password" required>
             </div>
@@ -327,11 +327,11 @@
 
           <!-- Local Student Demo / Offline Collapsible -->
           <details class="demo-collapsible">
-            <summary>Testing locally? Use Student Demo Sign-In</summary>
+            <summary>Testing locally? Use Student Demo Sandbox</summary>
             <form action="/auth/demo-login" method="POST" style="margin-top: 10px; display: grid; gap: 8px;">
-              <span style="font-size: 11.5px; color: var(--muted);">Quickly sign in with any GitHub username to simulate contributor profiles:</span>
+              <span style="font-size: 11.5px; color: var(--muted);">Preview the contributor dashboard with an unregistered public GitHub username (registered/admin accounts require password or OAuth):</span>
               <div style="display: flex; gap: 6px;">
-                <input type="text" name="username" placeholder="your-github-username" aria-label="GitHub username for demo" required style="flex:1; height:32px; padding:0 8px; font-size:12.5px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); outline:none;">
+                <input type="text" name="username" placeholder="your-github-username" aria-label="GitHub username for demo" pattern="[a-zA-Z0-9_-]{1,39}" required style="flex:1; height:32px; padding:0 8px; font-size:12.5px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); outline:none;">
                 <button type="submit" class="btn btn-sm" style="font-size: 12px;">Demo Login</button>
               </div>
             </form>

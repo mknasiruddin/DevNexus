@@ -2,10 +2,12 @@
   "name": "devnexus",
   "version": "1.0.0",
   "description": "an open source contribution portal",
-  "main": "index.js",
+  "main": "app.js",
   "scripts": {
     "start": "node app.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "node --watch app.js",
+    "test": "node scripts/run_all_tests.js",
+    "test:modules": "node scripts/test_saanvi_modules.js"
   },
   "author": "mknasiruddin",
   "license": "ISC",

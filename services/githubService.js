@@ -29,6 +29,12 @@ const {
   getAllUsers
 } = require('../db/database');
 
+const {
+  calculateRepositoryHealth,
+  calculateContributionReadiness,
+  evaluateIssueReadiness
+} = require('./saanviModulesService');
+
 const GITHUB_API_BASE = 'https://api.github.com';
 const USER_AGENT = 'DevNexus-Platform/1.0.0 (Node.js/Express; Educational Capstone)';
 
@@ -38,16 +44,31 @@ function getEffectiveToken(sessionToken) {
 }
 
 // Helper to construct request headers
-function getHeaders(token) {
+function getHeaders(token, includeAuth = true) {
   const headers = {
     'Accept': 'application/vnd.github.v3+json',
     'User-Agent': USER_AGENT
   };
-  const activeToken = getEffectiveToken(token);
-  if (activeToken) {
-    headers['Authorization'] = `Bearer ${activeToken}`;
+  if (includeAuth) {
+    const activeToken = getEffectiveToken(token);
+    if (activeToken) {
+      headers['Authorization'] = `Bearer ${activeToken}`;
+    }
   }
   return headers;
+}
+
+// Resilient fetch wrapper: catches network errors and retries unauthenticated if a configured token is invalid (401)
+async function safeGithubFetch(url, token = null) {
+  try {
+    let res = await fetch(url, { headers: getHeaders(token, true) });
+    if (res.status === 401 && getEffectiveToken(token)) {
+      res = await fetch(url, { headers: getHeaders(null, false) });
+    }
+    return { res, networkError: null };
+  } catch (err) {
+    return { res: null, networkError: err };
+  }
 }
 
 // Parse rate limit headers
@@ -179,15 +200,20 @@ async function getAuthenticatedUser(accessToken) {
 }
 
 async function getUserProfile(username, token = null) {
-  const cacheKey = `user_profile:${username.toLowerCase()}`;
+  const cleanUser = String(username || '').trim();
+  if (!cleanUser) {
+    return { user: null, rateLimit: null, error: 'INVALID_USERNAME' };
+  }
+  const cacheKey = `user_profile:${cleanUser.toLowerCase()}`;
   const cached = getCached(cacheKey);
   if (cached) {
     return { user: cached.data, rateLimit: cached.headers.rateLimit || null, cached: true };
   }
 
-  const res = await fetch(`${GITHUB_API_BASE}/users/${encodeURIComponent(username)}`, {
-    headers: getHeaders(token)
-  });
+  const { res, networkError } = await safeGithubFetch(`${GITHUB_API_BASE}/users/${encodeURIComponent(cleanUser)}`, token);
+  if (networkError || !res) {
+    return { user: null, rateLimit: null, error: 'NETWORK_ERROR' };
+  }
 
   const rateLimit = parseRateLimit(res.headers);
   if (res.status === 404) {
@@ -203,15 +229,27 @@ async function getUserProfile(username, token = null) {
 }
 
 async function getUserRepositories(username, token = null, { sort = 'updated', perPage = 6 } = {}) {
-  const cacheKey = `user_repos:${username.toLowerCase()}:${perPage}`;
+  const cleanUser = String(username || '').trim();
+  const cacheKey = `user_repos:${cleanUser.toLowerCase()}:${perPage}`;
   const cached = getCached(cacheKey);
   if (cached) {
-    return { repos: cached.data, rateLimit: cached.headers.rateLimit || null, cached: true };
+    const enrichedCached = (Array.isArray(cached.data) ? cached.data : []).map(r => ({
+      ...r,
+      health: r.health || calculateRepositoryHealth({
+        ...r,
+        updated_at: r.updatedAt,
+        stargazers_count: r.stars,
+        forks_count: r.forks,
+        open_issues_count: r.openIssues
+      })
+    }));
+    return { repos: enrichedCached, rateLimit: cached.headers.rateLimit || null, cached: true };
   }
 
-  const res = await fetch(`${GITHUB_API_BASE}/users/${encodeURIComponent(username)}/repos?sort=${sort}&per_page=${perPage}&type=owner`, {
-    headers: getHeaders(token)
-  });
+  const { res, networkError } = await safeGithubFetch(`${GITHUB_API_BASE}/users/${encodeURIComponent(cleanUser)}/repos?sort=${sort}&per_page=${perPage}&type=owner`, token);
+  if (networkError || !res) {
+    return { repos: [], rateLimit: null, error: 'NETWORK_ERROR' };
+  }
 
   const rateLimit = parseRateLimit(res.headers);
   if (!res.ok) {
@@ -219,7 +257,7 @@ async function getUserRepositories(username, token = null, { sort = 'updated', p
   }
 
   const repos = await res.json();
-  const sanitized = repos.map(r => ({
+  const sanitized = (Array.isArray(repos) ? repos : []).map(r => ({
     id: r.id,
     name: r.name,
     fullName: r.full_name,
@@ -229,7 +267,10 @@ async function getUserRepositories(username, token = null, { sort = 'updated', p
     stars: r.stargazers_count,
     forks: r.forks_count,
     openIssues: r.open_issues_count,
-    updatedAt: r.updated_at
+    updatedAt: r.updated_at,
+    license: r.license ? (r.license.spdx_id || r.license.name) : null,
+    topics: Array.isArray(r.topics) ? r.topics.slice(0, 6) : [],
+    health: calculateRepositoryHealth(r)
   }));
 
   setCache(cacheKey, sanitized, { rateLimit }, 300);
@@ -237,15 +278,17 @@ async function getUserRepositories(username, token = null, { sort = 'updated', p
 }
 
 async function getUserEvents(username, token = null, { perPage = 8 } = {}) {
-  const cacheKey = `user_events:${username.toLowerCase()}:${perPage}`;
+  const cleanUser = String(username || '').trim();
+  const cacheKey = `user_events:${cleanUser.toLowerCase()}:${perPage}`;
   const cached = getCached(cacheKey);
   if (cached) {
     return { events: cached.data, rateLimit: cached.headers.rateLimit || null, cached: true };
   }
 
-  const res = await fetch(`${GITHUB_API_BASE}/users/${encodeURIComponent(username)}/events/public?per_page=${perPage}`, {
-    headers: getHeaders(token)
-  });
+  const { res, networkError } = await safeGithubFetch(`${GITHUB_API_BASE}/users/${encodeURIComponent(cleanUser)}/events/public?per_page=${perPage}`, token);
+  if (networkError || !res) {
+    return { events: [], rateLimit: null, error: 'NETWORK_ERROR' };
+  }
 
   const rateLimit = parseRateLimit(res.headers);
   if (!res.ok) {
@@ -303,6 +346,9 @@ async function getUserEvents(username, token = null, { perPage = 8 } = {}) {
 // ----------------------------------------------------
 
 async function searchIssues({ query = '', label = 'all', language = 'all', difficulty = 'all', page = 1, perPage = 10 } = {}, userSkills = [], token = null) {
+  const safePage = Math.max(1, Math.min(100, parseInt(page, 10) || 1));
+  const safePerPage = Math.max(1, Math.min(50, parseInt(perPage, 10) || 10));
+
   // Build GitHub Search Query String
   // Format: is:issue is:open [label:...] [language:...] [keywords]
   let qParts = ['is:issue', 'is:open'];
@@ -326,7 +372,7 @@ async function searchIssues({ query = '', label = 'all', language = 'all', diffi
   }
 
   const queryString = qParts.join(' ');
-  const cacheKey = `issue_search:${queryString}:${page}:${perPage}`;
+  const cacheKey = `issue_search:${queryString}:${safePage}:${safePerPage}`;
 
   // Check cache (5 min TTL)
   const cached = getCached(cacheKey);
@@ -338,20 +384,34 @@ async function searchIssues({ query = '', label = 'all', language = 'all', diffi
     };
   }
 
-  const url = `${GITHUB_API_BASE}/search/issues?q=${encodeURIComponent(queryString)}&sort=updated&order=desc&page=${page}&per_page=${perPage}`;
-  const res = await fetch(url, { headers: getHeaders(token) });
+  const url = `${GITHUB_API_BASE}/search/issues?q=${encodeURIComponent(queryString)}&sort=updated&order=desc&page=${safePage}&per_page=${safePerPage}`;
+  const { res, networkError } = await safeGithubFetch(url, token);
+
+  if (networkError || !res) {
+    return {
+      issues: [],
+      totalCount: 0,
+      page: safePage,
+      perPage: safePerPage,
+      totalPages: 0,
+      rateLimit: null,
+      error: 'NETWORK_ERROR',
+      errorMessage: 'Unable to reach GitHub API. Please check your internet connection and try again.'
+    };
+  }
+
   const rateLimit = parseRateLimit(res.headers);
 
   if (res.status === 403) {
     return {
       issues: [],
       totalCount: 0,
-      page,
-      perPage,
+      page: safePage,
+      perPage: safePerPage,
       totalPages: 0,
       rateLimit,
       error: 'RATE_LIMIT_EXCEEDED',
-      errorMessage: `GitHub API search rate limit reached. Limit resets in ${rateLimit.resetInMinutes} minute(s).`
+      errorMessage: `GitHub API search rate limit reached. Limit resets in ${rateLimit ? rateLimit.resetInMinutes : 1} minute(s).`
     };
   }
 
@@ -359,8 +419,8 @@ async function searchIssues({ query = '', label = 'all', language = 'all', diffi
     return {
       issues: [],
       totalCount: 0,
-      page,
-      perPage,
+      page: safePage,
+      perPage: safePerPage,
       totalPages: 0,
       rateLimit,
       error: `API_ERROR_${res.status}`,
@@ -370,7 +430,7 @@ async function searchIssues({ query = '', label = 'all', language = 'all', diffi
 
   const data = await res.json();
   const totalCount = data.total_count || 0;
-  const totalPages = Math.min(Math.ceil(totalCount / perPage), 100); // GitHub limits search pagination to top 1,000 results
+  const totalPages = Math.min(Math.ceil(totalCount / safePerPage), 100); // GitHub limits search pagination to top 1,000 results
 
   // Process & enrich issue items with compatibility scores
   const issues = (data.items || []).map(item => {
@@ -414,8 +474,8 @@ async function searchIssues({ query = '', label = 'all', language = 'all', diffi
   const payload = {
     issues,
     totalCount,
-    page,
-    perPage,
+    page: safePage,
+    perPage: safePerPage,
     totalPages
   };
 
@@ -550,6 +610,8 @@ async function searchRepositories({
   page = 1,
   perPage = 12
 } = {}, token = null) {
+  const safePage = Math.max(1, Math.min(80, parseInt(page, 10) || 1));
+  const safePerPage = Math.max(1, Math.min(50, parseInt(perPage, 10) || 12));
   let qParts = [];
 
   if (query && query.trim() !== '') {
@@ -575,13 +637,26 @@ async function searchRepositories({
   }
 
   const queryString = qParts.join(' ');
-  const cacheKey = `repo_search:${queryString}:${sort}:${order}:${page}:${perPage}`;
+  const cacheKey = `repo_search:${queryString}:${sort}:${order}:${safePage}:${safePerPage}`;
 
   // Check cache (5 min TTL)
   const cached = getCached(cacheKey);
   if (cached) {
+    const cachedRepos = Array.isArray(cached.data?.repositories)
+      ? cached.data.repositories.map(r => ({
+          ...r,
+          health: r.health || calculateRepositoryHealth({
+            ...r,
+            updated_at: r.updatedAtExact,
+            stargazers_count: r.stars,
+            forks_count: r.forks,
+            open_issues_count: r.openIssues
+          })
+        }))
+      : [];
     return {
       ...cached.data,
+      repositories: cachedRepos,
       rateLimit: cached.headers?.rateLimit || null,
       cached: true
     };
@@ -592,20 +667,34 @@ async function searchRepositories({
     sortParam = `&sort=${sort}&order=${order === 'asc' ? 'asc' : 'desc'}`;
   }
 
-  const url = `${GITHUB_API_BASE}/search/repositories?q=${encodeURIComponent(queryString)}${sortParam}&page=${page}&per_page=${perPage}`;
-  const res = await fetch(url, { headers: getHeaders(token) });
+  const url = `${GITHUB_API_BASE}/search/repositories?q=${encodeURIComponent(queryString)}${sortParam}&page=${safePage}&per_page=${safePerPage}`;
+  const { res, networkError } = await safeGithubFetch(url, token);
+
+  if (networkError || !res) {
+    return {
+      repositories: [],
+      totalCount: 0,
+      page: safePage,
+      perPage: safePerPage,
+      totalPages: 0,
+      rateLimit: null,
+      error: 'NETWORK_ERROR',
+      errorMessage: 'Unable to reach GitHub API. Please check your internet connection and try again.'
+    };
+  }
+
   const rateLimit = parseRateLimit(res.headers);
 
   if (res.status === 403) {
     return {
       repositories: [],
       totalCount: 0,
-      page,
-      perPage,
+      page: safePage,
+      perPage: safePerPage,
       totalPages: 0,
       rateLimit,
       error: 'RATE_LIMIT_EXCEEDED',
-      errorMessage: `GitHub API search rate limit reached. Limit resets in ${rateLimit.resetInMinutes} minute(s).`
+      errorMessage: `GitHub API search rate limit reached. Limit resets in ${rateLimit ? rateLimit.resetInMinutes : 1} minute(s).`
     };
   }
 
@@ -613,8 +702,8 @@ async function searchRepositories({
     return {
       repositories: [],
       totalCount: 0,
-      page,
-      perPage,
+      page: safePage,
+      perPage: safePerPage,
       totalPages: 0,
       rateLimit,
       error: `API_ERROR_${res.status}`,
@@ -625,11 +714,12 @@ async function searchRepositories({
   const data = await res.json();
   const totalCount = data.total_count || 0;
   // GitHub limits search pagination to top 1,000 results
-  const totalPages = Math.min(Math.ceil(totalCount / perPage), Math.floor(1000 / perPage));
+  const totalPages = Math.min(Math.ceil(totalCount / safePerPage), Math.floor(1000 / safePerPage));
 
   const repositories = (data.items || []).map(item => {
     const langKey = (item.language || '').toLowerCase();
     const langColor = LANGUAGE_COLORS[langKey] || '#818CF8';
+    const health = calculateRepositoryHealth(item);
 
     return {
       id: item.id,
@@ -650,15 +740,16 @@ async function searchRepositories({
       topics: Array.isArray(item.topics) ? item.topics.slice(0, 6) : [],
       license: item.license ? (item.license.spdx_id || item.license.name) : null,
       updatedAt: formatRelativeTime(item.updated_at),
-      updatedAtExact: item.updated_at
+      updatedAtExact: item.updated_at,
+      health
     };
   });
 
   const payload = {
     repositories,
     totalCount,
-    page,
-    perPage,
+    page: safePage,
+    perPage: safePerPage,
     totalPages
   };
 
@@ -701,10 +792,8 @@ async function syncContributorFromGitHub(username, token = null) {
   // 3. Fetch up to 100 recent public events from official GitHub Events API
   let events = [];
   try {
-    const res = await fetch(`${GITHUB_API_BASE}/users/${encodeURIComponent(cleanUsername)}/events/public?per_page=100`, {
-      headers: getHeaders(token)
-    });
-    if (res.ok) {
+    const { res } = await safeGithubFetch(`${GITHUB_API_BASE}/users/${encodeURIComponent(cleanUsername)}/events/public?per_page=100`, token);
+    if (res && res.ok) {
       const data = await res.json();
       if (Array.isArray(data)) {
         events = data;
@@ -824,5 +913,8 @@ module.exports = {
   parseRateLimit,
   LANGUAGE_COLORS,
   syncContributorFromGitHub,
-  seedInitialContributors
+  seedInitialContributors,
+  calculateRepositoryHealth,
+  calculateContributionReadiness,
+  evaluateIssueReadiness
 };

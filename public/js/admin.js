@@ -22,24 +22,27 @@
     toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 2800);
   }
 
-  // Theme switcher
-  var themeToggle = $('#theme-toggle');
-  if (themeToggle) {
-    themeToggle.addEventListener('click', function () {
-      var currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
-      var nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', nextTheme);
-      try { localStorage.setItem('theme', nextTheme); } catch (e) {}
-    });
-  }
+  // Fallback theme & mobile menu listeners if not already initialized by dashboard-nav partial
+  if (!window.__devnexusNavInit) {
+    window.__devnexusNavInit = true;
+    var themeToggle = $('#theme-toggle');
+    if (themeToggle) {
+      themeToggle.addEventListener('click', function () {
+        var currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+        var nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', nextTheme);
+        try { localStorage.setItem('theme', nextTheme); } catch (e) {}
+      });
+    }
 
-  // Mobile menu
-  var burger = $('#burger');
-  var mobilePanel = $('#mobile-panel');
-  if (burger && mobilePanel) {
-    burger.addEventListener('click', function () {
-      mobilePanel.classList.toggle('open');
-    });
+    var burger = $('#burger');
+    var mobilePanel = $('#mobile-panel');
+    if (burger && mobilePanel) {
+      burger.addEventListener('click', function () {
+        var open = mobilePanel.classList.toggle('open');
+        burger.setAttribute('aria-expanded', String(open));
+      });
+    }
   }
 
   // Filter users table

@@ -19,3 +19,11 @@ data/*.sqlite-shm
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Local reports and temporary files
+DEVELOPMENT_REPORT.md
+SAANVI_MODULE_IMPLEMENTATION_REPORT.md
+SAANVI_MODULE_REPORT.md
+TESTING_CHECKLIST.md
+Compressed file.zip
+data.zip

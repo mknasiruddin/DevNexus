@@ -126,6 +126,18 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_contrib_username ON contributors(username);
     CREATE INDEX IF NOT EXISTS idx_contrib_act_time ON contributor_activities(event_timestamp);
     CREATE INDEX IF NOT EXISTS idx_contrib_act_user ON contributor_activities(contributor_id);
+
+    CREATE TABLE IF NOT EXISTS roadmap_progress (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      step_number INTEGER NOT NULL CHECK(step_number >= 1 AND step_number <= 14),
+      completed INTEGER NOT NULL DEFAULT 1,
+      completed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(user_id, step_number)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_roadmap_user ON roadmap_progress(user_id);
   `);
 
   // Ensure is_onboarded column exists for existing SQLite database files
@@ -210,12 +222,16 @@ function registerLocalUser({ username, email, password, name = null }) {
   const cleanUsername = (username || '').trim();
   const cleanEmail = (email || '').trim().toLowerCase();
 
-  if (!cleanUsername || cleanUsername.length < 3) {
-    throw new Error('Username must be at least 3 characters long.');
+  if (!cleanUsername || cleanUsername.length < 3 || cleanUsername.length > 39) {
+    throw new Error('Username must be between 3 and 39 characters long.');
   }
 
   if (!/^[a-zA-Z0-9_-]+$/.test(cleanUsername)) {
     throw new Error('Username may only contain letters, numbers, hyphens, and underscores.');
+  }
+
+  if (cleanEmail && !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(cleanEmail)) {
+    throw new Error('Please provide a valid email address.');
   }
 
   if (!password || password.length < 6) {
@@ -244,7 +260,7 @@ function registerLocalUser({ username, email, password, name = null }) {
 
   const result = insert.run(
     cleanUsername,
-    name || cleanUsername,
+    (name || cleanUsername).trim().slice(0, 80),
     cleanEmail || `${cleanUsername.toLowerCase()}@devnexus.local`,
     avatarUrl,
     'Open source developer exploring community projects.',
@@ -311,27 +327,50 @@ function upsertGithubUser(profile) {
 }
 
 function findOrCreateDemoUser(username, name = null) {
-  const existing = findUserByUsername(username);
-  if (existing) return existing;
+  const cleanUsername = (username || '').trim().replace(/^@/, '');
+  if (!cleanUsername || !/^[a-zA-Z0-9_-]{2,39}$/.test(cleanUsername)) {
+    throw new Error('Please provide a valid GitHub username (2-39 alphanumeric, hyphen, or underscore characters).');
+  }
+
+  const existing = findUserByUsername(cleanUsername);
+  if (existing) {
+    // Prevent impersonation of administrators, maintainers, or protected accounts
+    if (existing.role === 'admin' || existing.role === 'maintainer') {
+      throw new Error('Demo sign-in cannot be used to access administrator or maintainer accounts.');
+    }
+    if (existing.password_hash || existing.github_id) {
+      throw new Error('This username belongs to a registered account. Please sign in with your password or GitHub OAuth.');
+    }
+    if (existing.status !== 'active') {
+      throw new Error('This account has been suspended.');
+    }
+    return existing;
+  }
 
   const insert = db.prepare(`
     INSERT INTO users (username, name, email, avatar_url, bio, role, status, is_onboarded)
     VALUES (?, ?, ?, ?, ?, 'contributor', 'active', 0)
   `);
   const result = insert.run(
-    username,
-    name || username,
-    `${username.toLowerCase()}@devnexus.local`,
+    cleanUsername,
+    name || cleanUsername,
+    `${cleanUsername.toLowerCase()}@devnexus.local`,
     `https://avatars.githubusercontent.com/u/9919?v=4`,
     'Open source developer exploring community projects.'
   );
   return findUserById(result.lastInsertRowid);
 }
 
-function updateUserProfile(userId, { skills, experience_level, bio, is_onboarded = 1 }) {
+function updateUserProfile(userId, { name, skills, experience_level, bio, is_onboarded = 1 }) {
+  const validLevels = ['Beginner', 'Intermediate', 'Advanced'];
+  const cleanLevel = validLevels.includes(experience_level) ? experience_level : null;
+  const cleanName = typeof name === 'string' && name.trim() !== '' ? name.trim().slice(0, 80) : null;
+  const cleanBio = typeof bio === 'string' ? bio.trim().slice(0, 300) : null;
+
   const update = db.prepare(`
     UPDATE users
-    SET skills = COALESCE(?, skills),
+    SET name = COALESCE(?, name),
+        skills = COALESCE(?, skills),
         experience_level = COALESCE(?, experience_level),
         bio = COALESCE(?, bio),
         is_onboarded = ?,
@@ -339,9 +378,10 @@ function updateUserProfile(userId, { skills, experience_level, bio, is_onboarded
     WHERE id = ?
   `);
   update.run(
+    cleanName,
     skills ? (typeof skills === 'string' ? skills : JSON.stringify(skills)) : null,
-    experience_level || null,
-    bio || null,
+    cleanLevel,
+    cleanBio,
     is_onboarded,
     userId
   );
@@ -586,26 +626,28 @@ function getLeaderboard({
   page = 1,
   perPage = 10
 } = {}) {
-  let timeClause = '';
   const now = new Date();
+  const sevenDaysAgo = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000)).toISOString();
+  const fourteenDaysAgo = new Date(now.getTime() - (14 * 24 * 60 * 60 * 1000)).toISOString();
+
+  let timeClause = '';
+  const joinParams = [];
   if (time === 'this-week') {
-    const weekAgo = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000)).toISOString();
-    timeClause = `AND ca.event_timestamp >= '${weekAgo}'`;
+    timeClause = 'AND ca.event_timestamp >= ?';
+    joinParams.push(sevenDaysAgo);
   } else if (time === 'this-month') {
     const monthAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000)).toISOString();
-    timeClause = `AND ca.event_timestamp >= '${monthAgo}'`;
+    timeClause = 'AND ca.event_timestamp >= ?';
+    joinParams.push(monthAgo);
   }
 
   let searchClause = '';
-  const params = [];
+  const searchParams = [];
   if (search && search.trim() !== '') {
-    searchClause = `WHERE (LOWER(c.username) LIKE ? OR LOWER(c.name) LIKE ?)`;
+    searchClause = 'WHERE (LOWER(c.username) LIKE ? OR LOWER(c.name) LIKE ?)';
     const s = `%${search.trim().toLowerCase()}%`;
-    params.push(s, s);
+    searchParams.push(s, s);
   }
-
-  const sevenDaysAgo = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000)).toISOString();
-  const fourteenDaysAgo = new Date(now.getTime() - (14 * 24 * 60 * 60 * 1000)).toISOString();
 
   let orderBy = 'total_points DESC, activity_count DESC, c.followers DESC';
   if (category === 'active') {
@@ -614,7 +656,9 @@ function getLeaderboard({
     orderBy = 'velocity DESC, total_points DESC, activity_count DESC';
   }
 
-  const offset = (Math.max(1, page) - 1) * perPage;
+  const safePage = Math.max(1, parseInt(page, 10) || 1);
+  const safePerPage = Math.max(1, Math.min(100, parseInt(perPage, 10) || 10));
+  const offset = (safePage - 1) * safePerPage;
 
   const query = `
     SELECT
@@ -635,11 +679,10 @@ function getLeaderboard({
       SUM(CASE WHEN ca.event_type = 'IssuesEvent' THEN 1 ELSE 0 END) AS issues_count,
       SUM(CASE WHEN ca.source = 'devnexus' THEN ca.points ELSE 0 END) AS devnexus_points,
       SUM(CASE WHEN ca.source = 'github' THEN ca.points ELSE 0 END) AS github_points,
-      COALESCE(
-        (SELECT SUM(points) FROM contributor_activities WHERE contributor_id = c.id AND event_timestamp >= '${sevenDaysAgo}')
+      (
+        COALESCE((SELECT SUM(points) FROM contributor_activities WHERE contributor_id = c.id AND event_timestamp >= ?), 0)
         -
-        (SELECT SUM(points) FROM contributor_activities WHERE contributor_id = c.id AND event_timestamp >= '${fourteenDaysAgo}' AND event_timestamp < '${sevenDaysAgo}'),
-        0
+        COALESCE((SELECT SUM(points) FROM contributor_activities WHERE contributor_id = c.id AND event_timestamp >= ? AND event_timestamp < ?), 0)
       ) AS velocity
     FROM contributors c
     LEFT JOIN contributor_activities ca ON c.id = ca.contributor_id ${timeClause}
@@ -654,10 +697,11 @@ function getLeaderboard({
     ${searchClause}
   `;
 
-  const rows = db.prepare(query).all(...params, perPage, offset);
-  const totalCountRow = db.prepare(countQuery).get(...params);
+  const queryParams = [sevenDaysAgo, fourteenDaysAgo, sevenDaysAgo, ...joinParams, ...searchParams, safePerPage, offset];
+  const rows = db.prepare(query).all(...queryParams);
+  const totalCountRow = db.prepare(countQuery).get(...searchParams);
   const totalCount = totalCountRow ? totalCountRow.count : 0;
-  const totalPages = Math.ceil(totalCount / perPage);
+  const totalPages = Math.ceil(totalCount / safePerPage);
 
   const ranked = rows.map((r, i) => ({
     rank: offset + i + 1,
@@ -721,6 +765,71 @@ function getContributorDetails(username) {
   };
 }
 
+// First Contribution Roadmap Progress Operations (14-Stage Roadmap)
+function getUserRoadmapProgress(userId) {
+  const numericUserId = Number(userId);
+  if (!numericUserId || Number.isNaN(numericUserId) || numericUserId <= 0) {
+    return [];
+  }
+  const rows = db.prepare(`
+    SELECT step_number, completed, completed_at
+    FROM roadmap_progress
+    WHERE user_id = ? AND completed = 1
+    ORDER BY step_number ASC
+  `).all(numericUserId);
+  return rows.map(r => ({
+    stepNumber: Number(r.step_number),
+    completed: Boolean(r.completed),
+    completedAt: r.completed_at
+  }));
+}
+
+function setRoadmapStepStatus(userId, stepNumber, completed = true) {
+  const numericUserId = Number(userId);
+  const numericStep = Number(stepNumber);
+
+  if (!numericUserId || Number.isNaN(numericUserId) || numericUserId <= 0) {
+    throw new Error('A valid authenticated user ID is required to update roadmap progress.');
+  }
+  if (!Number.isInteger(numericStep) || numericStep < 1 || numericStep > 14) {
+    throw new Error('Roadmap step number must be an integer between 1 and 14.');
+  }
+
+  const userRow = findUserById(numericUserId);
+  if (!userRow) {
+    throw new Error('Authenticated user does not exist.');
+  }
+
+  const isCompleted = Boolean(completed);
+  if (isCompleted) {
+    const upsert = db.prepare(`
+      INSERT INTO roadmap_progress (user_id, step_number, completed, completed_at)
+      VALUES (?, ?, 1, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id, step_number) DO UPDATE SET
+        completed = 1,
+        completed_at = CURRENT_TIMESTAMP
+    `);
+    upsert.run(numericUserId, numericStep);
+    logActivity(numericUserId, 'ROADMAP_STEP_COMPLETE', `stage-${numericStep}`, `Completed First Contribution Roadmap stage #${numericStep}`);
+  } else {
+    const del = db.prepare('DELETE FROM roadmap_progress WHERE user_id = ? AND step_number = ?');
+    del.run(numericUserId, numericStep);
+    logActivity(numericUserId, 'ROADMAP_STEP_UNCHECK', `stage-${numericStep}`, `Marked First Contribution Roadmap stage #${numericStep} incomplete`);
+  }
+
+  return getUserRoadmapProgress(numericUserId);
+}
+
+function resetUserRoadmapProgress(userId) {
+  const numericUserId = Number(userId);
+  if (!numericUserId || Number.isNaN(numericUserId) || numericUserId <= 0) {
+    throw new Error('A valid authenticated user ID is required.');
+  }
+  db.prepare('DELETE FROM roadmap_progress WHERE user_id = ?').run(numericUserId);
+  logActivity(numericUserId, 'ROADMAP_RESET', 'all-stages', 'Reset First Contribution Roadmap progress');
+  return [];
+}
+
 // Initial bootstrap check
 bootstrapAdmin();
 
@@ -758,5 +867,9 @@ module.exports = {
   recordContributorActivity,
   getLeaderboard,
   getLeaderboardStats,
-  getContributorDetails
+  getContributorDetails,
+  getUserRoadmapProgress,
+  setRoadmapStepStatus,
+  resetUserRoadmapProgress
 };
+

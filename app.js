@@ -27,13 +27,16 @@ if (fs.existsSync(envPath)) {
 // Initialize SQLite Database Layer (ACID Persistent Storage)
 require("./db/database");
 
-const { sessionMiddleware } = require("./services/authService");
+const { sessionMiddleware, securityHeadersMiddleware, loginRateLimiter, requireAuth } = require("./services/authService");
 
 const app = express();
 
 if (process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
 }
+
+app.disable("x-powered-by");
+app.use(securityHeadersMiddleware);
 
 // View engine & static asset serving
 app.set("view engine", "ejs");
@@ -56,16 +59,18 @@ app.get("/", (req, res) => {
 const authRoutes = require("./routes/authRoutes");
 app.use("/auth", authRoutes);
 
-// Direct Top-Level Authentication Endpoints
+// Direct Top-Level Authentication & Profile Endpoints
 app.get("/login", authRoutes.handleGetLogin);
-app.post("/login", authRoutes.handlePostLogin);
+app.post("/login", loginRateLimiter, authRoutes.handlePostLogin);
 app.get("/signup", authRoutes.handleGetSignup);
 app.post("/signup", authRoutes.handlePostSignup);
-app.post("/forgot-password", authRoutes.handleForgotPassword);
+app.post("/forgot-password", loginRateLimiter, authRoutes.handleForgotPassword);
 
 app.get("/logout", (req, res) => res.redirect("/auth/logout"));
 app.get("/onboarding", authRoutes.handleGetOnboarding);
 app.post("/onboarding", authRoutes.handlePostOnboarding);
+app.get("/profile", requireAuth, (req, res) => res.redirect("/onboarding?edit=1"));
+app.post("/profile", requireAuth, authRoutes.handlePostProfile);
 
 // --- Isolated Dashboard, Admin & Project Discovery Route Modules ---
 app.use("/projects", require("./routes/projectRoutes"));
@@ -75,6 +80,41 @@ app.use("/admin", require("./routes/adminRoutes"));
 // --- Content, Guide & Community Routes ---
 app.use("/", require("./routes/contentRoutes"));
 
+// --- 404 Not Found Handler ---
+app.use((req, res) => {
+  if (req.xhr || (req.headers.accept && req.headers.accept.includes("application/json")) || req.path.startsWith("/api/") || req.path.includes("/api/")) {
+    return res.status(404).json({ success: false, error: "NOT_FOUND", message: "The requested resource or endpoint does not exist." });
+  }
+  res.status(404).render("error", {
+    siteName: "DevNexus",
+    activePage: "",
+    statusCode: 404,
+    title: "404 — Page Not Found",
+    message: "The page you are looking for does not exist or may have been moved.",
+    actionUrl: "/",
+    actionText: "Return to Home"
+  });
+});
+
+// --- Global Error Handling Middleware (No Stack Traces Exposed) ---
+app.use((err, req, res, next) => {
+  console.error("[DevNexus Unhandled Error]", err.message);
+  if (res.headersSent) {
+    return next(err);
+  }
+  if (req.xhr || (req.headers.accept && req.headers.accept.includes("application/json"))) {
+    return res.status(500).json({ success: false, error: "INTERNAL_SERVER_ERROR", message: "An unexpected server error occurred." });
+  }
+  res.status(500).render("error", {
+    siteName: "DevNexus",
+    activePage: "",
+    statusCode: 500,
+    title: "Unexpected Server Error",
+    message: "Something went wrong while processing your request. Please try again.",
+    actionUrl: "/",
+    actionText: "Return to Home"
+  });
+});
 
 const PORT = process.env.PORT || 3000;
 

@@ -184,6 +184,11 @@ async function runTests() {
     console.log('✓ Sync input validation verified.');
 
   } finally {
+    try {
+      const { db } = require('../db/database');
+      db.prepare("DELETE FROM contributor_activities WHERE contributor_id IN (SELECT id FROM contributors WHERE username = 'test_dev_leaderboard')").run();
+      db.prepare("DELETE FROM contributors WHERE username = 'test_dev_leaderboard'").run();
+    } catch (e) {}
     server.close();
   }
 
