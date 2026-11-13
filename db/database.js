@@ -177,6 +177,41 @@ function initSchema() {
 
     CREATE INDEX IF NOT EXISTS idx_skill_tree_user ON skill_tree_progress(user_id);
     CREATE INDEX IF NOT EXISTS idx_user_xp_user ON user_xp(user_id);
+
+    CREATE TABLE IF NOT EXISTS user_streaks (
+      user_id INTEGER PRIMARY KEY,
+      current_streak INTEGER DEFAULT 0,
+      longest_streak INTEGER DEFAULT 0,
+      last_active_date TEXT,
+      total_active_days INTEGER DEFAULT 0,
+      streak_freeze_count INTEGER DEFAULT 1,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS streak_activities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      activity_date TEXT NOT NULL,
+      activity_type TEXT DEFAULT 'general',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, activity_date),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_streak_activities_user_date ON streak_activities(user_id, activity_date);
+    CREATE INDEX IF NOT EXISTS idx_user_streaks_user ON user_streaks(user_id);
+
+    CREATE TABLE IF NOT EXISTS user_badges (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      badge_id TEXT NOT NULL,
+      unlocked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, badge_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_user_badges_user ON user_badges(user_id);
   `);
 
   // Ensure is_onboarded column exists for existing SQLite database files
@@ -971,6 +1006,123 @@ function getUserRecentActivity(userId, limit = 10) {
   `).all(userId, limit);
 }
 
+// --- Contribution Streaks (Member 3) ---
+
+function getUserStreakData(userId) {
+  const row = db.prepare('SELECT * FROM user_streaks WHERE user_id = ?').get(userId);
+  if (!row) {
+    return {
+      user_id: userId,
+      current_streak: 0,
+      longest_streak: 0,
+      last_active_date: null,
+      total_active_days: 0,
+      streak_freeze_count: 1
+    };
+  }
+  return row;
+}
+
+function upsertUserStreak(userId, streakData) {
+  const stmt = db.prepare(`
+    INSERT INTO user_streaks (user_id, current_streak, longest_streak, last_active_date, total_active_days, streak_freeze_count, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(user_id) DO UPDATE SET
+      current_streak = excluded.current_streak,
+      longest_streak = excluded.longest_streak,
+      last_active_date = excluded.last_active_date,
+      total_active_days = excluded.total_active_days,
+      streak_freeze_count = excluded.streak_freeze_count,
+      updated_at = CURRENT_TIMESTAMP
+  `);
+  stmt.run(
+    userId,
+    streakData.current_streak || 0,
+    streakData.longest_streak || 0,
+    streakData.last_active_date || null,
+    streakData.total_active_days || 0,
+    streakData.streak_freeze_count !== undefined ? streakData.streak_freeze_count : 1
+  );
+  return getUserStreakData(userId);
+}
+
+function recordStreakActivityDate(userId, activityDate, activityType = 'general') {
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO streak_activities (user_id, activity_date, activity_type)
+      VALUES (?, ?, ?)
+      ON CONFLICT(user_id, activity_date) DO NOTHING
+    `);
+    const res = stmt.run(userId, activityDate, activityType);
+    return res.changes > 0;
+  } catch (err) {
+    console.error('[DevNexus DB] Failed to record streak activity date:', err.message);
+    return false;
+  }
+}
+
+function getUserStreakActivities(userId, limit = 90) {
+  return db.prepare(`
+    SELECT activity_date, activity_type, created_at
+    FROM streak_activities
+    WHERE user_id = ?
+    ORDER BY activity_date DESC
+    LIMIT ?
+  `).all(userId, limit);
+}
+
+function getUserTotalActiveDays(userId) {
+  const row = db.prepare(`
+    SELECT COUNT(DISTINCT activity_date) as count
+    FROM streak_activities
+    WHERE user_id = ?
+  `).get(userId);
+  return row ? row.count : 0;
+}
+
+function consumeStreakFreeze(userId) {
+  const streak = getUserStreakData(userId);
+  if (streak && streak.streak_freeze_count > 0) {
+    db.prepare(`
+      UPDATE user_streaks
+      SET streak_freeze_count = streak_freeze_count - 1, updated_at = CURRENT_TIMESTAMP
+      WHERE user_id = ?
+    `).run(userId);
+    return true;
+  }
+  return false;
+}
+
+// --- Achievement Badges (Member 3) ---
+
+function getUserUnlockedBadges(userId) {
+  return db.prepare('SELECT badge_id, unlocked_at FROM user_badges WHERE user_id = ? ORDER BY unlocked_at ASC').all(userId);
+}
+
+function awardUserBadge(userId, badgeId) {
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO user_badges (user_id, badge_id)
+      VALUES (?, ?)
+      ON CONFLICT(user_id, badge_id) DO NOTHING
+    `);
+    const res = stmt.run(userId, badgeId);
+    if (res.changes > 0) {
+      logActivity(userId, 'BADGE_EARNED', badgeId, `Earned achievement badge: ${badgeId}`);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.error('[DevNexus DB] Failed to award badge:', err.message);
+    return false;
+  }
+}
+
+function hasUserBadge(userId, badgeId) {
+  const row = db.prepare('SELECT id FROM user_badges WHERE user_id = ? AND badge_id = ? LIMIT 1').get(userId, badgeId);
+  return Boolean(row);
+}
+
 module.exports = {
   db,
   hashPassword,
@@ -1015,6 +1167,15 @@ module.exports = {
   upsertSkillNode,
   getUserXP,
   upsertUserXP,
-  getUserRecentActivity
+  getUserRecentActivity,
+  getUserStreakData,
+  upsertUserStreak,
+  recordStreakActivityDate,
+  getUserStreakActivities,
+  getUserTotalActiveDays,
+  consumeStreakFreeze,
+  getUserUnlockedBadges,
+  awardUserBadge,
+  hasUserBadge
 };
 

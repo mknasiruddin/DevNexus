@@ -1,0 +1,239 @@
+/* DevNexus - Achievement Badges Stylesheet (Member 3)
+   Theme-aware styles for badge showcase cards, trophy progress, and category filters. */
+
+.badges-main {
+  flex: 1;
+  padding: 32px 0 64px;
+}
+
+/* Hero Showcase Card */
+.badges-hero-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px;
+  margin-bottom: 28px;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  flex-wrap: wrap;
+  position: relative;
+  overflow: hidden;
+}
+
+.badges-hero-card::before {
+  content: "";
+  position: absolute;
+  top: -40px;
+  right: -40px;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(234, 179, 8, 0.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.badges-hero-left {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.badges-giant-trophy {
+  font-size: 58px;
+  line-height: 1;
+  filter: drop-shadow(0 0 16px rgba(234, 179, 8, 0.45));
+}
+
+.badges-hero-count {
+  font-size: 40px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.badges-hero-count span {
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-left: 6px;
+}
+
+.badges-hero-sub {
+  font-size: 14.5px;
+  color: var(--muted);
+  margin-top: 6px;
+  max-width: 500px;
+}
+
+/* Overall Progress Card */
+.badges-progress-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-bottom: 28px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+}
+
+.badges-filter-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.badge-filter-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.badge-filter-btn:hover {
+  border-color: var(--accent-solid);
+  color: var(--text);
+}
+
+.badge-filter-btn.active {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: var(--btn-glow);
+}
+
+/* Badges Showcase Grid */
+.badges-showcase-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 18px;
+}
+
+.badge-item-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.badge-item-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-accent);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.badge-item-card.is-unlocked {
+  border-color: rgba(234, 179, 8, 0.4);
+  background: linear-gradient(180deg, var(--surface) 0%, rgba(234, 179, 8, 0.04) 100%);
+}
+
+.badge-item-card.is-locked {
+  opacity: 0.72;
+}
+
+.badge-top-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.badge-icon-box {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  transition: transform 0.2s ease;
+}
+
+.badge-item-card.is-unlocked .badge-icon-box {
+  background: rgba(234, 179, 8, 0.12);
+  border-color: rgba(234, 179, 8, 0.35);
+  box-shadow: 0 0 12px rgba(234, 179, 8, 0.25);
+}
+
+.badge-title-block {
+  flex: 1;
+}
+
+.badge-card-title {
+  font-size: 15.5px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.badge-card-category {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+
+.badge-tier-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.badge-desc-text {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 0;
+  flex: 1;
+}
+
+.badge-progress-section {
+  margin-top: auto;
+}
+
+.badge-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+
+.badge-progress-bar-bg {
+  height: 6px;
+  background: rgba(148, 163, 184, 0.14);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.badge-progress-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #6366f1 0%, #a855f7 100%);
+  transition: width 0.3s ease;
+}
+
+.badge-item-card.is-unlocked .badge-progress-bar-fill {
+  background: linear-gradient(90deg, #eab308 0%, #f59e0b 100%);
+}
+

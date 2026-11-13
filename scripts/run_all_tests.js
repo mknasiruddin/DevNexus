@@ -16,7 +16,9 @@ const SUITES = [
   'test_projects.js',
   'test_leaderboard.js',
   'test_admin_security.js',
-  'test_saanvi_modules.js'
+  'test_saanvi_modules.js',
+  'test_member3_streaks.js',
+  'test_member3_badges.js'
 ];
 
 function httpRequest(server, method, reqPath, data = null, headers = {}) {

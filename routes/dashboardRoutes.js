@@ -27,6 +27,9 @@ const {
   getRoadmapStagesWithProgress
 } = require('../services/saanviModulesService');
 
+const streakService = require('../services/streakService');
+const badgeService = require('../services/badgeService');
+
 const { requireAuth } = require('../services/authService');
 const authRoutes = require('./authRoutes');
 
@@ -93,6 +96,23 @@ router.get('/', requireAuth, async (req, res) => {
     // Choose most relevant rate limit indicator
     const rateLimit = issueSearchResults.rateLimit || profileRateLimit || reposRateLimit || eventsRateLimit;
 
+    // 7. Auto-record daily contribution streak & retrieve metrics (Member 3)
+    let streak = null;
+    try {
+      streak = await streakService.recordActivity(req.user.id, 'dashboard_visit');
+    } catch (e) {
+      console.warn('[DevNexus] Streak auto-record skipped:', e.message);
+    }
+
+    // 8. Retrieve achievement badges summary (Member 3)
+    let badgeStats = null;
+    try {
+      const badgeRes = badgeService.evaluateUserBadges(req.user.id);
+      badgeStats = badgeRes ? badgeRes.summary : null;
+    } catch (e) {
+      console.warn('[DevNexus] Badge evaluation skipped:', e.message);
+    }
+
     res.render('dashboard', {
       siteName: 'DevNexus',
       activePage: 'dashboard',
@@ -123,6 +143,8 @@ router.get('/', requireAuth, async (req, res) => {
       bookmarks: dbBookmarks,
       readinessScore,
       roadmapProgress,
+      streak,
+      badgeStats,
       activeQuery: query,
       activeLabel: label,
       activeLanguage: language,

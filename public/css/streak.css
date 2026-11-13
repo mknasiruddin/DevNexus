@@ -1,0 +1,502 @@
+/* DevNexus - Contribution Streaks Stylesheet (Member 3)
+   Theme-aware styles for streak widgets, heatmaps, and milestone badges. */
+
+/* ==========================================================================
+   1. Dashboard Sidebar Widget Styles
+   ========================================================================== */
+.streak-sidebar-widget {
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.streak-sidebar-widget:hover {
+  border-color: var(--border-accent);
+}
+
+.streak-widget-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.streak-flame-icon {
+  font-size: 26px;
+  line-height: 1;
+  display: inline-block;
+  animation: flameBob 2s infinite ease-in-out;
+  filter: drop-shadow(0 0 8px rgba(249, 115, 22, 0.5));
+}
+
+@keyframes flameBob {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-3px) scale(1.08); }
+}
+
+.streak-header-info {
+  flex: 1;
+}
+
+.streak-count-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.streak-sub-title {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.streak-badge-active {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.16);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+}
+
+.streak-badge-pending {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(234, 179, 8, 0.14);
+  color: #eab308;
+  border: 1px solid rgba(234, 179, 8, 0.35);
+}
+
+.streak-dots-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+[data-theme="light"] .streak-dots-row {
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.streak-dot-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.streak-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: bold;
+  transition: all 0.2s ease;
+}
+
+.dot-active {
+  background: linear-gradient(135deg, #f97316 0%, #ef4444 100%);
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.45);
+}
+
+.dot-inactive {
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--muted);
+  border: 1px dashed var(--border);
+}
+
+.is-today .streak-dot {
+  outline: 2px solid var(--accent-solid);
+  outline-offset: 1px;
+}
+
+.streak-dot-label {
+  font-size: 9.5px;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+.is-today .streak-dot-label {
+  color: var(--accent-text);
+  font-weight: 700;
+}
+
+.streak-motivation {
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+
+/* ==========================================================================
+   2. Full Streak Page (/streak) Layout Styles
+   ========================================================================== */
+.streak-main {
+  flex: 1;
+  padding: 32px 0 64px;
+}
+
+.streak-hero-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 36px 32px;
+  margin-bottom: 28px;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  flex-wrap: wrap;
+  position: relative;
+  overflow: hidden;
+}
+
+.streak-hero-card::before {
+  content: "";
+  position: absolute;
+  top: -50px;
+  right: -50px;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(249, 115, 22, 0.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.streak-hero-left {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.streak-giant-flame {
+  font-size: 64px;
+  line-height: 1;
+  animation: flamePulse 2.4s infinite ease-in-out;
+  filter: drop-shadow(0 0 16px rgba(249, 115, 22, 0.6));
+}
+
+@keyframes flamePulse {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 16px rgba(249, 115, 22, 0.6)); }
+  50% { transform: scale(1.1); filter: drop-shadow(0 0 24px rgba(239, 68, 68, 0.8)); }
+}
+
+.streak-hero-count {
+  font-size: 48px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.streak-hero-count span {
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-left: 6px;
+}
+
+.streak-hero-sub {
+  font-size: 15px;
+  color: var(--muted);
+  margin-top: 8px;
+  max-width: 480px;
+}
+
+.streak-hero-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Streak Stats Row */
+.streak-stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.streak-stat-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.streak-stat-box:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-accent);
+}
+
+.streak-stat-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  background: var(--badge-bg);
+  border: 1px solid var(--badge-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+}
+
+.streak-stat-val {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.1;
+}
+
+.streak-stat-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+/* 30-Day Activity Heatmap */
+.streak-calendar-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 24px;
+  margin-bottom: 28px;
+  box-shadow: var(--shadow);
+}
+
+.streak-card-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.streak-card-title-row h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.streak-grid-30 {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(32px, 1fr));
+  gap: 8px;
+  padding: 12px 0;
+}
+
+.streak-day-cell {
+  aspect-ratio: 1;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-family: var(--mono);
+  cursor: pointer;
+  position: relative;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.streak-day-cell:hover {
+  transform: scale(1.15);
+  z-index: 2;
+}
+
+.cell-active {
+  background: linear-gradient(135deg, #ea580c 0%, #ef4444 100%);
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(234, 88, 12, 0.4);
+}
+
+.cell-empty {
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  color: var(--muted);
+}
+
+.cell-today {
+  outline: 2px solid var(--accent-solid);
+  outline-offset: 1px;
+}
+
+/* Milestones Grid */
+.streak-milestones-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.milestone-badge-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.milestone-badge-card.unlocked {
+  border-color: rgba(249, 115, 22, 0.45);
+  background: linear-gradient(180deg, var(--surface) 0%, rgba(249, 115, 22, 0.04) 100%);
+}
+
+.milestone-badge-card.locked {
+  opacity: 0.72;
+}
+
+.milestone-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.milestone-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+}
+
+.milestone-tier-pill {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-left: auto;
+}
+
+.tier-Bronze {
+  background: rgba(205, 127, 50, 0.15);
+  color: #cd7f32;
+  border: 1px solid rgba(205, 127, 50, 0.4);
+}
+
+.tier-Silver {
+  background: rgba(192, 192, 192, 0.15);
+  color: #cbd5e1;
+  border: 1px solid rgba(192, 192, 192, 0.4);
+}
+
+.tier-Gold {
+  background: rgba(234, 179, 8, 0.15);
+  color: #eab308;
+  border: 1px solid rgba(234, 179, 8, 0.4);
+}
+
+.tier-Platinum {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.4);
+}
+
+.milestone-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.milestone-desc {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.milestone-bar-outer {
+  height: 6px;
+  background: rgba(148, 163, 184, 0.15);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.milestone-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f97316 0%, #ec4899 100%);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+/* Quick Actions Cards */
+.streak-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.streak-action-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  text-decoration: none;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: all 0.2s ease;
+}
+
+.streak-action-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-solid);
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.15);
+}
+
+.streak-action-icon {
+  font-size: 22px;
+}
+
+.streak-action-title {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.streak-action-sub {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+

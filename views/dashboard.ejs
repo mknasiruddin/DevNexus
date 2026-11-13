@@ -25,6 +25,7 @@
   <%- include('partials/theme-script') %>
   <link rel="stylesheet" href="/css/sparkles.css">
   <link rel="stylesheet" href="/css/dashboard.css">
+  <link rel="stylesheet" href="/css/streak.css">
 </head>
 <body>
   <%- include('partials/sparkles-bg') %>
@@ -155,6 +156,49 @@
               <% }); %>
             </div>
           </div>
+
+          <!-- ======================= CONTRIBUTION STREAK WIDGET (MEMBER 3) ======================= -->
+          <% if (locals.streak) { %>
+            <div class="streak-sidebar-widget" id="sidebar-streak-card" aria-label="Contribution Streak">
+              <div class="streak-widget-header">
+                <div class="streak-flame-icon" aria-hidden="true">🔥</div>
+                <div class="streak-header-info">
+                  <div class="streak-count-title" id="streak-count-display"><%= streak.current_streak %> Day Streak</div>
+                  <div class="streak-sub-title">Best: <%= streak.longest_streak %>d &bull; <%= streak.total_active_days %> total days</div>
+                </div>
+                <% if (streak.activeToday) { %>
+                  <span class="streak-badge-active" title="Contribution recorded today">Active</span>
+                <% } else { %>
+                  <span class="streak-badge-pending" title="Make an action today to keep your streak">Pending</span>
+                <% } %>
+              </div>
+
+              <!-- 7-Day Mini Dots Timeline -->
+              <div class="streak-dots-row">
+                <% (streak.recentWeek || []).forEach(function(day) { %>
+                  <div class="streak-dot-col <%= day.isToday ? 'is-today' : '' %>" title="<%= day.date %>: <%= day.active ? 'Active' : 'No activity' %>">
+                    <div class="streak-dot <%= day.active ? 'dot-active' : 'dot-inactive' %>">
+                      <% if (day.active) { %>&#10003;<% } %>
+                    </div>
+                    <span class="streak-dot-label"><%= day.dayName %></span>
+                  </div>
+                <% }); %>
+              </div>
+
+              <div class="streak-motivation">
+                <%= streak.statusMessage %>
+              </div>
+
+              <div style="display:flex; gap:6px; margin-top:8px;">
+                <a href="/streak" class="btn btn-sm" style="flex:1; text-align:center; font-size:11px; padding:6px 4px;">
+                  🔥 Streaks &rarr;
+                </a>
+                <a href="/badges" class="btn btn-sm" style="flex:1; text-align:center; font-size:11px; padding:6px 4px;">
+                  🏆 Badges (<%= locals.badgeStats ? badgeStats.unlockedCount : 0 %>) &rarr;
+                </a>
+              </div>
+            </div>
+          <% } %>
         </aside>
 
         <!-- ======================= MAIN CONTENT ======================= -->
