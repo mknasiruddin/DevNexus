@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Skill Tree | DevNexus</title>
+  <%- include('./partials/theme-script') %>
+  <link rel="stylesheet" href="/css/sparkles.css">
+  <link rel="stylesheet" href="/css/dashboard.css">
+  <link rel="stylesheet" href="/css/skill-tree.css">
+</head>
+<body>
+  <%- include('./partials/sparkles-bg') %>
+  <%- include('./partials/dashboard-nav', { activePage: 'skill-tree', user, isAdmin }) %>
+
+  <main class="skill-tree-main">
+
+    <!-- HEADER & XP SUMMARY BAR -->
+    <section class="xp-header">
+      <div class="xp-title-row">
+        <div class="xp-title">
+          <h1>🧠 Skill Tree</h1>
+          <div class="developer-level">Level <%= tree.xp.level %> Developer</div>
+        </div>
+        <div class="xp-total-bar">
+          <span class="xp-total-label">Total XP: <strong><%= tree.xp.total_xp %></strong></span>
+          <div class="xp-bar-outer">
+            <div class="xp-bar-fill" style="width: <%= Math.min(100, (tree.xp.total_xp % 200) / 2) %>%"></div>
+          </div>
+          <span class="xp-level-next">Next level in <%= 200 - (tree.xp.total_xp % 200) %> XP</span>
+        </div>
+      </div>
+      <div class="track-xp-bars">
+        <% [
+          ['Frontend', '🎨', 'frontend', tree.xp.frontend_xp],
+          ['Backend', '⚙️', 'backend', tree.xp.backend_xp],
+          ['DevOps', '🗄️', 'devops', tree.xp.devops_xp],
+          ['Open Source', '🌐', 'opensource', tree.xp.opensource_xp]
+        ].forEach(function([label, icon, key, xp]) { %>
+        <div class="track-xp-item">
+          <span class="track-icon"><%= icon %></span>
+          <span class="track-label"><%= label %></span>
+          <div class="track-bar-outer">
+            <div class="track-bar-fill track-<%= key %>" style="width: <%= Math.min(100, (xp || 0) / 5) %>%"></div>
+          </div>
+          <span class="track-xp-val"><%= xp || 0 %> XP</span>
+        </div>
+        <% }); %>
+      </div>
+    </section>
+
+    <!-- SKILL TREE GRID -->
+    <section class="skill-tree-grid-section">
+      <div class="skill-tree-layout">
+        <% const tracks = [
+          { key: 'frontend', label: 'Frontend', icon: '🎨', cssKey: 'frontend' },
+          { key: 'backend', label: 'Backend', icon: '⚙️', cssKey: 'backend' },
+          { key: 'devops', label: 'DevOps', icon: '🗄️', cssKey: 'devops' },
+          { key: 'opensource', label: 'Open Source', icon: '🌐', cssKey: 'opensource' }
+        ]; %>
+        <% tracks.forEach(function(track) { %>
+        <div class="track-column track-<%= track.cssKey %>">
+          <div class="track-header-label">
+            <span class="track-header-icon"><%= track.icon %></span>
+            <span><%= track.label %></span>
+          </div>
+          <div class="track-nodes">
+            <% const trackNodes = (tree.nodes || []).filter(function(n) { return n.track === track.key || (n.track && n.track.toLowerCase().includes(track.key)); }).sort(function(a, b) { return a.tier - b.tier; }); %>
+            <% trackNodes.forEach(function(node, idx) { %>
+            <% if (idx > 0) { %>
+            <div class="node-connector <%= node.status === 'unlocked' ? 'connector-unlocked' : (node.status === 'available' ? 'connector-available' : 'connector-locked') %>">
+              <div class="connector-line"></div>
+            </div>
+            <% } %>
+            <div class="skill-node node-<%= node.status %> track-node-<%= track.cssKey %>"
+                 data-node-id="<%= node.id %>"
+                 data-node-title="<%= node.title %>"
+                 data-node-desc="<%= node.criteriaDescription || '' %>"
+                 data-node-xp="<%= node.xpRequired || node.xp || 0 %>"
+                 data-node-status="<%= node.status %>"
+                 data-node-track="<%= node.track %>"
+                 data-node-tier="<%= node.tier %>"
+                 onclick="openNodeInspector(this)"
+                 role="button"
+                 tabindex="0"
+                 aria-label="<%= node.title %> — <%= node.status %>"
+            >
+              <div class="node-icon"><%= node.icon || '⭐' %></div>
+              <div class="node-title"><%= node.title %></div>
+              <div class="node-tier">Tier <%= node.tier %></div>
+              <% if (node.status === 'unlocked') { %>
+              <div class="node-badge-check" aria-label="Unlocked">✓</div>
+              <% } %>
+              <% if (node.status === 'available') { %>
+              <div class="node-pulse-ring"></div>
+              <% } %>
+            </div>
+            <% }); %>
+            <% if (trackNodes.length === 0) { %>
+            <div class="track-empty">No nodes in this track yet.</div>
+            <% } %>
+          </div>
+        </div>
+        <% }); %>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- NODE INSPECTOR SIDE PANEL -->
+  <aside id="nodeInspector" class="node-inspector" style="display:none" role="dialog" aria-modal="true" aria-labelledby="inspectorTitle">
+    <div class="inspector-header">
+      <h3 id="inspectorTitle">Skill Details</h3>
+      <button onclick="closeInspector()" class="inspector-close" aria-label="Close inspector">✕</button>
+    </div>
+    <div class="inspector-body">
+      <div id="inspectorIcon" class="inspector-icon"></div>
+      <div id="inspectorTrack" class="inspector-track"></div>
+      <div id="inspectorTier" class="inspector-tier"></div>
+      <p id="inspectorDesc" class="inspector-desc"></p>
+      <div class="inspector-xp-row">
+        <span>XP Reward:</span>
+        <span id="inspectorXP" class="inspector-xp-value"></span>
+      </div>
+      <div id="inspectorStatus" class="inspector-status"></div>
+      <button id="unlockBtn" class="btn-unlock" style="display:none" onclick="unlockNode()">🔓 Unlock Skill</button>
+      <div id="unlockMsg" class="unlock-msg" style="display:none"></div>
+    </div>
+  </aside>
+  <div id="inspectorBackdrop" class="inspector-backdrop" style="display:none" onclick="closeInspector()"></div>
+
+  <script>
+    // Inject tree data for JS
+    const TREE_DATA = <%- JSON.stringify(tree) %>;
+  </script>
+  <script src="/js/skill-tree.js"></script>
+  <%- include('./partials/footer') %>
+</body>
+</html>

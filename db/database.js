@@ -138,6 +138,45 @@ function initSchema() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_roadmap_user ON roadmap_progress(user_id);
+
+    CREATE TABLE IF NOT EXISTS portfolio_settings (
+      user_id INTEGER PRIMARY KEY,
+      headline TEXT DEFAULT '',
+      location TEXT DEFAULT '',
+      github_url TEXT DEFAULT '',
+      linkedin_url TEXT DEFAULT '',
+      website_url TEXT DEFAULT '',
+      twitter_url TEXT DEFAULT '',
+      featured_repos TEXT DEFAULT '[]',
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS skill_tree_progress (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      node_id TEXT NOT NULL,
+      status TEXT DEFAULT 'locked',
+      unlocked_at DATETIME,
+      xp_earned INTEGER DEFAULT 0,
+      UNIQUE(user_id, node_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS user_xp (
+      user_id INTEGER PRIMARY KEY,
+      total_xp INTEGER DEFAULT 0,
+      frontend_xp INTEGER DEFAULT 0,
+      backend_xp INTEGER DEFAULT 0,
+      devops_xp INTEGER DEFAULT 0,
+      opensource_xp INTEGER DEFAULT 0,
+      level INTEGER DEFAULT 1,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_skill_tree_user ON skill_tree_progress(user_id);
+    CREATE INDEX IF NOT EXISTS idx_user_xp_user ON user_xp(user_id);
   `);
 
   // Ensure is_onboarded column exists for existing SQLite database files
@@ -833,6 +872,105 @@ function resetUserRoadmapProgress(userId) {
 // Initial bootstrap check
 bootstrapAdmin();
 
+// --- Portfolio Settings ---
+
+function getPortfolioSettings(userId) {
+  const row = db.prepare('SELECT * FROM portfolio_settings WHERE user_id = ?').get(userId);
+  return row || {};
+}
+
+function upsertPortfolioSettings(userId, payload) {
+  const stmt = db.prepare(`
+    INSERT INTO portfolio_settings (user_id, headline, location, github_url, linkedin_url, website_url, twitter_url, featured_repos, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(user_id) DO UPDATE SET
+      headline = excluded.headline,
+      location = excluded.location,
+      github_url = excluded.github_url,
+      linkedin_url = excluded.linkedin_url,
+      website_url = excluded.website_url,
+      twitter_url = excluded.twitter_url,
+      featured_repos = excluded.featured_repos,
+      updated_at = CURRENT_TIMESTAMP
+  `);
+  stmt.run(
+    userId,
+    payload.headline || '',
+    payload.location || '',
+    payload.github_url || '',
+    payload.linkedin_url || '',
+    payload.website_url || '',
+    payload.twitter_url || '',
+    typeof payload.featured_repos === 'string' ? payload.featured_repos : JSON.stringify(payload.featured_repos || [])
+  );
+}
+
+// --- Skill Tree ---
+
+function getSkillTreeProgress(userId) {
+  return db.prepare('SELECT * FROM skill_tree_progress WHERE user_id = ?').all(userId);
+}
+
+function upsertSkillNode(userId, nodeId, status, xpEarned) {
+  const stmt = db.prepare(`
+    INSERT INTO skill_tree_progress (user_id, node_id, status, unlocked_at, xp_earned)
+    VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?)
+    ON CONFLICT(user_id, node_id) DO UPDATE SET
+      status = excluded.status,
+      unlocked_at = CASE WHEN excluded.status = 'unlocked' THEN CURRENT_TIMESTAMP ELSE unlocked_at END,
+      xp_earned = excluded.xp_earned
+  `);
+  stmt.run(userId, nodeId, status || 'locked', xpEarned || 0);
+}
+
+function getUserXP(userId) {
+  const row = db.prepare('SELECT * FROM user_xp WHERE user_id = ?').get(userId);
+  return row || {
+    user_id: userId,
+    total_xp: 0,
+    frontend_xp: 0,
+    backend_xp: 0,
+    devops_xp: 0,
+    opensource_xp: 0,
+    level: 1
+  };
+}
+
+function upsertUserXP(userId, xpData) {
+  const stmt = db.prepare(`
+    INSERT INTO user_xp (user_id, total_xp, frontend_xp, backend_xp, devops_xp, opensource_xp, level, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(user_id) DO UPDATE SET
+      total_xp = excluded.total_xp,
+      frontend_xp = excluded.frontend_xp,
+      backend_xp = excluded.backend_xp,
+      devops_xp = excluded.devops_xp,
+      opensource_xp = excluded.opensource_xp,
+      level = excluded.level,
+      updated_at = CURRENT_TIMESTAMP
+  `);
+  stmt.run(
+    userId,
+    xpData.total_xp || 0,
+    xpData.frontend_xp || 0,
+    xpData.backend_xp || 0,
+    xpData.devops_xp || 0,
+    xpData.opensource_xp || 0,
+    xpData.level || 1
+  );
+}
+
+// --- User Activity for Portfolio ---
+
+function getUserRecentActivity(userId, limit = 10) {
+  return db.prepare(`
+    SELECT * FROM activity_logs
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+    LIMIT ?
+  `).all(userId, limit);
+}
+
 module.exports = {
   db,
   hashPassword,
@@ -870,6 +1008,13 @@ module.exports = {
   getContributorDetails,
   getUserRoadmapProgress,
   setRoadmapStepStatus,
-  resetUserRoadmapProgress
+  resetUserRoadmapProgress,
+  getPortfolioSettings,
+  upsertPortfolioSettings,
+  getSkillTreeProgress,
+  upsertSkillNode,
+  getUserXP,
+  upsertUserXP,
+  getUserRecentActivity
 };
 

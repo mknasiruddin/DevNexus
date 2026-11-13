@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= portfolio.user ? portfolio.user.name || portfolio.user.username : 'Portfolio' %> | DevNexus</title>
+  <meta name="description" content="Developer portfolio on DevNexus">
+  <%- include('./partials/theme-script') %>
+  <link rel="stylesheet" href="/css/sparkles.css">
+  <link rel="stylesheet" href="/css/dashboard.css">
+  <link rel="stylesheet" href="/css/portfolio.css">
+</head>
+<body>
+  <%- include('./partials/sparkles-bg') %>
+  <%- include('./partials/dashboard-nav', { activePage: 'portfolio', siteName: siteName || 'DevNexus', user, isAdmin }) %>
+
+  <main class="portfolio-main" id="main">
+
+    <!-- ======================= HERO PROFILE CARD ======================= -->
+    <section class="portfolio-hero">
+      <div class="hero-card">
+        <img
+          class="hero-avatar"
+          src="<%= portfolio.profile && portfolio.profile.avatar_url ? portfolio.profile.avatar_url : (portfolio.user && portfolio.user.avatar_url ? portfolio.user.avatar_url : 'https://avatars.githubusercontent.com/u/9919?v=4') %>"
+          alt="<%= portfolio.user ? (portfolio.user.name || portfolio.user.username) : 'User' %> avatar"
+        >
+        <div class="hero-info">
+          <h1 class="hero-name"><%= portfolio.user ? (portfolio.user.name || portfolio.user.username) : 'Unknown Developer' %></h1>
+          <p class="hero-username">@<%= portfolio.user ? portfolio.user.username : '' %></p>
+          <p class="hero-headline"><%= portfolio.settings && portfolio.settings.headline ? portfolio.settings.headline : 'Open Source Developer' %></p>
+          <p class="hero-bio"><%= portfolio.profile && portfolio.profile.bio ? portfolio.profile.bio : (portfolio.user && portfolio.user.bio ? portfolio.user.bio : '') %></p>
+
+          <% if (portfolio.settings && portfolio.settings.location) { %>
+          <div class="hero-location">📍 <%= portfolio.settings.location %></div>
+          <% } %>
+
+          <div class="hero-links">
+            <% if (portfolio.settings && portfolio.settings.github_url) { %>
+              <a href="<%= portfolio.settings.github_url %>" target="_blank" rel="noopener noreferrer" class="social-link github-link">GitHub</a>
+            <% } else if (portfolio.user && portfolio.user.username) { %>
+              <a href="https://github.com/<%= portfolio.user.username %>" target="_blank" rel="noopener noreferrer" class="social-link github-link">GitHub</a>
+            <% } %>
+            <% if (portfolio.settings && portfolio.settings.linkedin_url) { %>
+              <a href="<%= portfolio.settings.linkedin_url %>" target="_blank" rel="noopener noreferrer" class="social-link linkedin-link">LinkedIn</a>
+            <% } %>
+            <% if (portfolio.settings && portfolio.settings.twitter_url) { %>
+              <a href="<%= portfolio.settings.twitter_url %>" target="_blank" rel="noopener noreferrer" class="social-link twitter-link">Twitter</a>
+            <% } %>
+            <% if (portfolio.settings && portfolio.settings.website_url) { %>
+              <a href="<%= portfolio.settings.website_url %>" target="_blank" rel="noopener noreferrer" class="social-link website-link">Website</a>
+            <% } %>
+          </div>
+
+          <div class="hero-actions">
+            <button class="btn-copy-link" onclick="copyPortfolioLink()">🔗 Copy Portfolio Link</button>
+            <% if (isOwnPortfolio) { %>
+              <button class="btn-edit" onclick="openEditModal()">✏️ Edit Portfolio</button>
+              <button class="btn-sync" onclick="syncWithGitHub()">🔄 Sync GitHub</button>
+            <% } %>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================= IMPACT METRICS GRID ======================= -->
+    <section class="portfolio-metrics">
+      <h2 class="section-title">Impact Metrics</h2>
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-icon">🏆</div>
+          <div class="metric-value"><%= portfolio.leaderboardRank ? '#' + portfolio.leaderboardRank : 'Unranked' %></div>
+          <div class="metric-label">Leaderboard Rank</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon">📦</div>
+          <div class="metric-value"><%= portfolio.repos ? portfolio.repos.length : 0 %></div>
+          <div class="metric-label">Repositories</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon">⭐</div>
+          <div class="metric-value"><%= portfolio.repos ? portfolio.repos.reduce((s, r) => s + (r.stargazers_count || 0), 0) : 0 %></div>
+          <div class="metric-label">Total Stars</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon">🎯</div>
+          <div class="metric-value">Lv.<%= portfolio.skillTreeSummary ? portfolio.skillTreeSummary.level : 1 %></div>
+          <div class="metric-label">Developer Level</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================= BADGES / ACHIEVEMENTS ======================= -->
+    <% if (portfolio.badges && portfolio.badges.length > 0) { %>
+    <section class="portfolio-badges">
+      <h2 class="section-title">Achievements</h2>
+      <div class="badges-grid">
+        <% portfolio.badges.forEach(badge => { %>
+        <div class="badge-card" title="<%= badge.description || badge.title %>">
+          <span class="badge-icon"><%= badge.icon || '🏅' %></span>
+          <span class="badge-title"><%= badge.title %></span>
+        </div>
+        <% }) %>
+      </div>
+    </section>
+    <% } %>
+
+    <!-- ======================= FEATURED REPOSITORIES ======================= -->
+    <section class="portfolio-repos">
+      <h2 class="section-title">Featured Repositories</h2>
+      <div class="repos-grid">
+        <%
+          const displayRepos = (portfolio.featuredRepos && portfolio.featuredRepos.length > 0)
+            ? portfolio.featuredRepos
+            : (portfolio.repos ? portfolio.repos.slice(0, 6) : []);
+        %>
+        <% if (displayRepos.length === 0) { %>
+          <div class="empty-state">No repositories to display yet.</div>
+        <% } else { %>
+          <% displayRepos.forEach(repo => { %>
+          <div class="repo-card">
+            <div class="repo-header">
+              <a href="<%= repo.html_url || repo.htmlUrl || '#' %>" target="_blank" rel="noopener noreferrer" class="repo-name">
+                <%= repo.name %>
+              </a>
+              <% if (repo.language) { %>
+                <span class="repo-lang-badge"><%= repo.language %></span>
+              <% } %>
+            </div>
+            <p class="repo-desc"><%= repo.description || 'No description provided.' %></p>
+            <div class="repo-stats">
+              <span>⭐ <%= repo.stargazers_count || repo.stars || 0 %></span>
+              <span>🍴 <%= repo.forks_count || repo.forks || 0 %></span>
+            </div>
+          </div>
+          <% }) %>
+        <% } %>
+      </div>
+    </section>
+
+    <!-- ======================= SKILL TREE SUMMARY ======================= -->
+    <% if (portfolio.skillTreeSummary) { %>
+    <section class="portfolio-skills">
+      <h2 class="section-title">
+        Skill Tree Progress
+        <a href="/skill-tree" class="view-full-link">View Full Tree →</a>
+      </h2>
+      <div class="skill-tracks-grid">
+        <%
+          const tracks = portfolio.skillTreeSummary.tracksProgress || {};
+          const trackDefs = [
+            ['Frontend',    '🎨', 'frontend'],
+            ['Backend',     '⚙️',  'backend'],
+            ['DevOps',      '🗄️', 'devops'],
+            ['Open Source', '🌐', 'opensource']
+          ];
+        %>
+        <% trackDefs.forEach(([label, icon, key]) => { %>
+        <div class="skill-track-card">
+          <div class="track-header">
+            <span class="track-icon"><%= icon %></span>
+            <span class="track-name"><%= label %></span>
+          </div>
+          <div class="track-xp"><%= (tracks[key] && tracks[key].xp) || 0 %> XP</div>
+          <div class="track-progress-bar">
+            <div class="track-fill" style="width: <%= Math.min(100, Math.round(((tracks[key] && tracks[key].xp) || 0) / 5)) %>%"></div>
+          </div>
+          <div class="track-unlocked">
+            <%= (tracks[key] && tracks[key].unlockedCount) || 0 %> / <%= (tracks[key] && tracks[key].totalNodes) || 4 %> skills
+          </div>
+        </div>
+        <% }) %>
+      </div>
+    </section>
+    <% } %>
+
+    <!-- ======================= RECENT ACTIVITY ======================= -->
+    <section class="portfolio-activity">
+      <h2 class="section-title">Recent Activity</h2>
+      <% if (!portfolio.recentActivity || portfolio.recentActivity.length === 0) { %>
+        <div class="empty-state">No recent activity recorded.</div>
+      <% } else { %>
+      <ul class="activity-list">
+        <% portfolio.recentActivity.forEach(act => { %>
+        <li class="activity-item">
+          <span class="activity-action"><%= act.action ? act.action.replace(/_/g, ' ') : 'Activity' %></span>
+          <span class="activity-target"><%= act.target || '' %></span>
+          <span class="activity-time"><%= act.created_at ? new Date(act.created_at).toLocaleDateString() : '' %></span>
+        </li>
+        <% }) %>
+      </ul>
+      <% } %>
+    </section>
+
+  </main>
+
+  <!-- ======================= EDIT MODAL (owner only) ======================= -->
+  <% if (isOwnPortfolio) { %>
+  <div id="editModal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h3 id="editModalTitle">Edit Portfolio</h3>
+        <button onclick="closeEditModal()" class="modal-close" aria-label="Close modal">✕</button>
+      </div>
+      <form id="editPortfolioForm" class="modal-form">
+        <label>
+          Headline
+          <input type="text" name="headline" maxlength="120" value="<%= portfolio.settings && portfolio.settings.headline ? portfolio.settings.headline : '' %>" placeholder="e.g. Full-Stack Developer & OSS Contributor">
+        </label>
+        <label>
+          Location
+          <input type="text" name="location" maxlength="80" value="<%= portfolio.settings && portfolio.settings.location ? portfolio.settings.location : '' %>" placeholder="e.g. San Francisco, CA">
+        </label>
+        <label>
+          GitHub URL
+          <input type="url" name="github_url" value="<%= portfolio.settings && portfolio.settings.github_url ? portfolio.settings.github_url : '' %>" placeholder="https://github.com/username">
+        </label>
+        <label>
+          LinkedIn URL
+          <input type="url" name="linkedin_url" value="<%= portfolio.settings && portfolio.settings.linkedin_url ? portfolio.settings.linkedin_url : '' %>" placeholder="https://linkedin.com/in/username">
+        </label>
+        <label>
+          Twitter URL
+          <input type="url" name="twitter_url" value="<%= portfolio.settings && portfolio.settings.twitter_url ? portfolio.settings.twitter_url : '' %>" placeholder="https://twitter.com/username">
+        </label>
+        <label>
+          Website URL
+          <input type="url" name="website_url" value="<%= portfolio.settings && portfolio.settings.website_url ? portfolio.settings.website_url : '' %>" placeholder="https://yoursite.com">
+        </label>
+        <div class="modal-actions">
+          <button type="submit" class="btn-primary">Save Changes</button>
+          <button type="button" onclick="closeEditModal()" class="btn-secondary">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <% } %>
+
+  <!-- ======================= TOAST NOTIFICATION ======================= -->
+  <div id="toast" class="toast" role="status" aria-live="polite" style="display:none"></div>
+
+  <script src="/js/portfolio.js"></script>
+  <%- include('./partials/footer') %>
+</body>
+</html>

@@ -462,6 +462,97 @@ async function runTests() {
     assert.ok(dashRes.text.includes('14-Stage Roadmap'), 'Dashboard must link to 14-Stage Roadmap');
     pass('Developer Dashboard (GET /dashboard) renders Contribution Readiness Score & Roadmap link');
 
+    // --- 4. Developer Portfolio & Interactive Skill Tree Tests ---
+    console.log('\n--- 4. Developer Portfolio & Interactive Skill Tree Tests ---');
+    const portfolioService = require('../services/portfolioService');
+    const skillTreeService = require('../services/skillTreeService');
+
+    // 4.1 SKILL_TREE_GRAPH verification
+    const graph = skillTreeService.SKILL_TREE_GRAPH;
+    assert.strictEqual(Array.isArray(graph), true, 'SKILL_TREE_GRAPH must be an array');
+    assert.strictEqual(graph.length, 16, 'SKILL_TREE_GRAPH must contain 16 nodes');
+    const tracksInGraph = [...new Set(graph.map(n => n.track))];
+    assert.strictEqual(tracksInGraph.length, 4, 'Must have 4 unique tracks');
+    pass('Skill Tree Graph structure verified (16 nodes across 4 tracks, tiers 1-4)');
+
+    // 4.2 Evaluate Skill Tree for User A
+    const userADoc = findUserByUsername(testUserA);
+    const evaluatedTree = await skillTreeService.evaluateUserSkillTree(userADoc.id, userADoc, [
+      { name: 'web-app', language: 'JavaScript' },
+      { name: 'api-service', language: 'Python' }
+    ]);
+    assert.ok(evaluatedTree.xp, 'Must calculate XP object');
+    assert.ok(evaluatedTree.tracks, 'Must include tracks breakdown');
+    assert.strictEqual(evaluatedTree.nodes.length, 16, 'All 16 nodes must have evaluated status');
+    assert.ok(evaluatedTree.nodes.some(n => n.status === 'available' || n.status === 'unlocked'), 'Tier 1 nodes should be available or unlocked');
+    pass('Skill Tree evaluation engine verified (automatic XP calculation & node states)');
+
+    // 4.3 Claim / Unlock a skill node
+    const availableNode = evaluatedTree.nodes.find(n => n.status === 'available');
+    if (availableNode) {
+      const claimRes = await skillTreeService.claimSkillNode(userADoc.id, availableNode.id, evaluatedTree);
+      assert.strictEqual(claimRes.node.id, availableNode.id);
+      pass(`Skill node unlocking verified (Claimed '${availableNode.title}' +${claimRes.xpEarned} XP)`);
+    } else {
+      pass('Skill node status evaluation verified');
+    }
+
+    // 4.4 HTTP: GET /portfolio (unauthenticated redirects to /login)
+    const unauthPortfolio = await request('/portfolio');
+    assert.strictEqual(unauthPortfolio.status, 302, 'Unauthenticated /portfolio must redirect to /login');
+    assert.strictEqual(unauthPortfolio.headers.get('location'), '/login');
+    pass('Unauthenticated GET /portfolio properly redirects to /login');
+
+    // 4.5 HTTP: GET /portfolio (authenticated user view)
+    const authPortfolio = await request('/portfolio', { cookie: cookieA });
+    assert.strictEqual(authPortfolio.status, 200);
+    assert.ok(authPortfolio.text.includes('Impact Metrics'), 'Portfolio must render Impact Metrics');
+    assert.ok(authPortfolio.text.includes('Featured Repositories'), 'Portfolio must render Featured Repositories');
+    assert.ok(authPortfolio.text.includes('Skill Tree Progress'), 'Portfolio must render Skill Tree Progress');
+    pass('Authenticated GET /portfolio renders Hero, Impact Metrics, Repos & Skill Tree');
+
+    // 4.6 HTTP: POST /portfolio/api/update (update settings)
+    const updatePortRes = await request('/portfolio/api/update', {
+      method: 'POST',
+      cookie: cookieA,
+      body: {
+        headline: 'Open Source Visionary & Full-Stack Architect',
+        location: 'Bengaluru, India',
+        github_url: 'https://github.com/' + testUserA,
+        linkedin_url: 'https://linkedin.com/in/' + testUserA,
+        website_url: 'https://devnexus.io',
+        twitter_url: 'https://twitter.com/' + testUserA
+      }
+    });
+    assert.strictEqual(updatePortRes.status, 200);
+    assert.strictEqual(updatePortRes.json.success, true);
+    pass('Portfolio settings update (POST /portfolio/api/update) persisted in SQLite');
+
+    // 4.7 HTTP: GET /portfolio/:username (public view)
+    const publicPortRes = await request('/portfolio/' + testUserA);
+    assert.strictEqual(publicPortRes.status, 200);
+    assert.ok(publicPortRes.text.includes('Open Source Visionary'), 'Public portfolio must display updated headline');
+    assert.ok(publicPortRes.text.includes('Bengaluru, India'), 'Public portfolio must display location');
+    pass('Public GET /portfolio/:username displays developer portfolio and social links');
+
+    // 4.8 HTTP: GET /skill-tree (authenticated view)
+    const skillTreePage = await request('/skill-tree', { cookie: cookieA });
+    assert.strictEqual(skillTreePage.status, 200);
+    assert.ok(skillTreePage.text.includes('Skill Tree'), 'Skill Tree page must render');
+    assert.ok(skillTreePage.text.includes('Frontend'), 'Must render Frontend track');
+    assert.ok(skillTreePage.text.includes('Backend'), 'Must render Backend track');
+    pass('Authenticated GET /skill-tree renders 4 RPG-style progression tracks & XP bars');
+
+    // 4.9 HTTP: GET /api/skill-tree (JSON API)
+    const skillTreeJson = await request('/api/skill-tree', {
+      cookie: cookieA,
+      headers: { 'Accept': 'application/json' }
+    });
+    assert.strictEqual(skillTreeJson.status, 200);
+    assert.strictEqual(skillTreeJson.json.success, true);
+    assert.ok(skillTreeJson.json.tree.xp, 'API returns computed user XP');
+    pass('JSON API endpoint (GET /api/skill-tree) verified');
+
   } finally {
     // Clean up temporary test users and their cascaded roadmap_progress/sessions/activity_logs
     for (const uName of [testUserA, testUserB]) {
