@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Achievement Badges | DevNexus</title>
+  <meta name="description" content="View unlocked open-source achievement badges, milestone trophies, and track your developer progression on DevNexus.">
+  <%- include('partials/theme-script') %>
+  <link rel="stylesheet" href="/css/sparkles.css">
+  <link rel="stylesheet" href="/css/dashboard.css">
+  <link rel="stylesheet" href="/css/badges.css">
+</head>
+<body>
+  <%- include('partials/sparkles-bg') %>
+
+  <!-- NAVBAR -->
+  <%- include('partials/dashboard-nav', { activePage: 'badges', siteName: 'DevNexus', user: locals.user, isAdmin: (locals.user && locals.user.role === 'admin') }) %>
+
+  <!-- DISCLOSURE BANNER -->
+  <aside class="disclosure-banner" aria-label="Badges Notice">
+    <div class="container disclosure-inner">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span class="disclosure-badge">Trophy Showcase</span>
+        <span>Developer <strong>Achievement Badges</strong> &amp; Platform Milestones. Stored in persistent SQLite.</span>
+      </div>
+      <div>
+        <span style="font-size: 12px; font-family: var(--mono); color: var(--accent-text);">
+          Member 3 &bull; Recognition &amp; Trophies
+        </span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN BADGES CONTENT -->
+  <main class="badges-main" id="main">
+    <div class="container">
+
+      <!-- HERO TROPHY CARD -->
+      <section class="badges-hero-card" aria-label="Achievement Badges Summary">
+        <div class="badges-hero-left">
+          <div class="badges-giant-trophy" aria-hidden="true">🏆</div>
+          <div>
+            <div class="badges-hero-count">
+              <%= summary.unlockedCount %><span>/ <%= summary.totalCount %> Badges</span>
+            </div>
+            <div style="font-size:13.5px; color:var(--muted); margin-top:4px;">
+              <strong><%= summary.completionPercent %>%</strong> of platform achievements unlocked.
+            </div>
+            <p class="badges-hero-sub">
+              Earn permanent recognition across bookmarks, roadmap progress, technical skills, and unbroken streaks as you contribute to open source.
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <button id="btn-sync-badges" class="btn btn-primary" onclick="syncBadges()">
+            🔄 Re-Check &amp; Sync Badges
+          </button>
+        </div>
+      </section>
+
+      <!-- OVERALL PROGRESS BAR -->
+      <section class="badges-progress-card" aria-label="Badge Completion Bar">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; font-size:13.5px;">
+          <span><strong>Overall Trophy Progress</strong> (<%= summary.unlockedCount %> of <%= summary.totalCount %> Completed)</span>
+          <span style="font-family:var(--mono); color:var(--accent-text);"><%= summary.completionPercent %>%</span>
+        </div>
+        <div class="badge-progress-bar-bg" style="height:10px;">
+          <div class="badge-progress-bar-fill" style="width: <%= summary.completionPercent %>%;"></div>
+        </div>
+      </section>
+
+      <!-- CATEGORY FILTER BUTTONS -->
+      <nav class="badges-filter-bar" aria-label="Filter Badges">
+        <button class="badge-filter-btn active" data-filter="all" onclick="filterBadges('all', this)">All Badges (<%= summary.totalCount %>)</button>
+        <button class="badge-filter-btn" data-filter="unlocked" onclick="filterBadges('unlocked', this)">Unlocked (<%= summary.unlockedCount %>)</button>
+        <button class="badge-filter-btn" data-filter="locked" onclick="filterBadges('locked', this)">In Progress (<%= summary.lockedCount %>)</button>
+        <button class="badge-filter-btn" data-filter="discovery" onclick="filterBadges('discovery', this)">Discovery</button>
+        <button class="badge-filter-btn" data-filter="roadmap" onclick="filterBadges('roadmap', this)">Roadmap</button>
+        <button class="badge-filter-btn" data-filter="streaks" onclick="filterBadges('streaks', this)">Streaks</button>
+        <button class="badge-filter-btn" data-filter="skills" onclick="filterBadges('skills', this)">Skills</button>
+      </nav>
+
+      <!-- BADGES GRID -->
+      <section class="badges-showcase-grid" id="badges-container" aria-label="Achievement Badges Grid">
+        <% badges.forEach(function(badge) { %>
+          <article class="badge-item-card <%= badge.unlocked ? 'is-unlocked' : 'is-locked' %>"
+                   data-category="<%= badge.category %>"
+                   data-status="<%= badge.unlocked ? 'unlocked' : 'locked' %>">
+            <div class="badge-top-row">
+              <div class="badge-icon-box"><%= badge.icon %></div>
+              <div class="badge-title-block">
+                <div class="badge-card-title"><%= badge.title %></div>
+                <div class="badge-card-category"><%= badge.category %></div>
+              </div>
+              <span class="badge-tier-badge tier-<%= badge.tier %>"><%= badge.tier %></span>
+            </div>
+
+            <p class="badge-desc-text"><%= badge.description %></p>
+
+            <div class="badge-progress-section">
+              <div class="badge-progress-header">
+                <span><%= badge.unlocked ? '✓ Unlocked' : 'Progress: ' + badge.progress.current + ' / ' + badge.progress.target %></span>
+                <span><%= badge.progress.percent %>%</span>
+              </div>
+              <div class="badge-progress-bar-bg">
+                <div class="badge-progress-bar-fill" style="width: <%= badge.progress.percent %>%;"></div>
+              </div>
+            </div>
+          </article>
+        <% }); %>
+      </section>
+
+    </div>
+  </main>
+
+  <%- include('partials/footer') %>
+
+  <!-- BADGES INTERACTION SCRIPT -->
+  <script>
+    function filterBadges(category, btn) {
+      document.querySelectorAll('.badge-filter-btn').forEach(b => b.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+
+      const cards = document.querySelectorAll('.badge-item-card');
+      cards.forEach(card => {
+        const cardCat = card.getAttribute('data-category');
+        const cardStatus = card.getAttribute('data-status');
+
+        if (category === 'all') {
+          card.style.display = 'flex';
+        } else if (category === 'unlocked') {
+          card.style.display = cardStatus === 'unlocked' ? 'flex' : 'none';
+        } else if (category === 'locked') {
+          card.style.display = cardStatus === 'locked' ? 'flex' : 'none';
+        } else {
+          card.style.display = cardCat === category ? 'flex' : 'none';
+        }
+      });
+    }
+
+    async function syncBadges() {
+      const btn = document.getElementById('btn-sync-badges');
+      if (btn) btn.disabled = true;
+      try {
+        const res = await fetch('/api/badges/sync', {
+          method: 'POST',
+          headers: { 'Accept': 'application/json' }
+        });
+        const data = await res.json();
+        if (data.success) {
+          window.location.reload();
+        } else {
+          alert('Failed to sync badges.');
+          if (btn) btn.disabled = false;
+        }
+      } catch (e) {
+        alert('Network error while syncing badges.');
+        if (btn) btn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
+

@@ -83,6 +83,14 @@ app.use("/api/portfolio", require("./routes/portfolioRoutes"));
 app.use("/skill-tree", require("./routes/skillTreeRoutes"));
 app.use("/api/skill-tree", require("./routes/skillTreeRoutes"));
 
+// --- Contribution Streak Routes (Member 3) ---
+app.use("/streak", require("./routes/streakRoutes"));
+app.use("/api/streak", require("./routes/streakRoutes"));
+
+// --- Achievement Badges Routes (Member 3) ---
+app.use("/badges", require("./routes/badgeRoutes"));
+app.use("/api/badges", require("./routes/badgeRoutes"));
+
 // --- Content, Guide & Community Routes ---
 app.use("/", require("./routes/contentRoutes"));
 
