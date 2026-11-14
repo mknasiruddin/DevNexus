@@ -11,6 +11,7 @@ const {
   getUserRepositories,
   getUserEvents,
   searchIssues,
+  searchRepositories,
   isOAuthConfigured
 } = require('../services/githubService');
 
@@ -60,9 +61,27 @@ router.get('/', requireAuth, async (req, res) => {
     const { user: profileData, rateLimit: profileRateLimit, error: profileError } = await getUserProfile(targetUsername, githubToken);
 
     // Get skills from the logged-in user's profile
-    const userSkills = parseUserSkills(req.user);
+const userSkills = parseUserSkills(req.user);
 
-    // 2. Fetch Real GitHub Repositories
+// Personalized repository recommendations
+let recommendedRepositories = [];
+
+if (userSkills.length > 0) {
+  const recommendationResults = await searchRepositories({
+    query: 'stars:>=10',
+    sort: 'stars',
+    order: 'desc',
+    page: 1,
+    perPage: 12,
+    userSkills
+  }, githubToken);
+
+  recommendedRepositories = (recommendationResults.repositories || [])
+    .filter(repo => repo.compatibilityScore > 0)
+    .slice(0, 6);
+}
+
+// 2. Fetch Real GitHub Repositories
     const { repos, rateLimit: reposRateLimit } = await getUserRepositories(targetUsername, githubToken, { sort: 'updated', perPage: 6 });
 
     // 3. Fetch Real GitHub Events / Activity
@@ -118,6 +137,7 @@ router.get('/', requireAuth, async (req, res) => {
       activePage: 'dashboard',
       user: req.user || null,
       userSkills,
+      recommendedRepositories,
       targetUsername,
       profileUpdated: req.query.profileUpdated === '1',
       profile: profileData || {
