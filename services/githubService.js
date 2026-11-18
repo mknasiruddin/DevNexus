@@ -18,6 +18,7 @@ try {
   // Ignore if dotenv is not present
 }
 
+const crypto = require('node:crypto');
 const {
   getCached,
   setCache,
@@ -28,6 +29,7 @@ const {
   findUserByUsername,
   getAllUsers
 } = require('../db/database');
+const { SKILL_ALIASES } = require('./techCatalog');
 
 const {
   calculateRepositoryHealth,
@@ -37,6 +39,182 @@ const {
 
 const GITHUB_API_BASE = 'https://api.github.com';
 const USER_AGENT = 'DevNexus-Platform/1.0.0 (Node.js/Express; Educational Capstone)';
+const inFlightRequests = new Map();
+
+function readHeader(headers, name) {
+  if (!headers) return null;
+  const lower = String(name).toLowerCase();
+  if (typeof headers.get === 'function') {
+    const val = headers.get(lower);
+    if (val !== undefined && val !== null && val !== '') return val;
+    const exact = headers.get(name);
+    return (exact !== undefined && exact !== null && exact !== '') ? exact : null;
+  }
+  const direct = headers[lower] ?? headers[name];
+  return (direct !== undefined && direct !== null && direct !== '') ? String(direct) : null;
+}
+
+function getTokenScopeKey(token = null) {
+  const effective = getEffectiveToken(token);
+  if (!effective) return 'public';
+  return 'tok_' + crypto.createHash('sha256').update(String(effective)).digest('hex').slice(0, 12);
+}
+
+function withInFlightDedupe(key, factory) {
+  if (inFlightRequests.has(key)) {
+    return inFlightRequests.get(key);
+  }
+  const promise = Promise.resolve()
+    .then(factory)
+    .finally(() => {
+      inFlightRequests.delete(key);
+    });
+  inFlightRequests.set(key, promise);
+  return promise;
+}
+
+function parseRetryAfterSeconds(rawRetryAfter) {
+  if (!rawRetryAfter) return null;
+  const trimmed = String(rawRetryAfter).trim();
+  if (/^\d+$/.test(trimmed)) {
+    return Math.max(1, parseInt(trimmed, 10));
+  }
+  const parsedDateMs = Date.parse(trimmed);
+  if (Number.isFinite(parsedDateMs)) {
+    return Math.max(1, Math.ceil((parsedDateMs - Date.now()) / 1000));
+  }
+  return null;
+}
+
+// Parse actual GitHub rate limit headers (returns null for missing fields — never fabricates fake quota)
+function parseRateLimit(headers) {
+  if (!headers) return null;
+  const rawLimit = readHeader(headers, 'x-ratelimit-limit');
+  const rawRemaining = readHeader(headers, 'x-ratelimit-remaining');
+  const rawReset = readHeader(headers, 'x-ratelimit-reset');
+  const rawUsed = readHeader(headers, 'x-ratelimit-used');
+  const rawResource = readHeader(headers, 'x-ratelimit-resource');
+  const rawRetryAfter = readHeader(headers, 'retry-after');
+
+  const limit = rawLimit !== null && Number.isFinite(Number(rawLimit)) ? Number(rawLimit) : null;
+  const remaining = rawRemaining !== null && Number.isFinite(Number(rawRemaining)) ? Number(rawRemaining) : null;
+  const resetEpoch = rawReset !== null && Number.isFinite(Number(rawReset)) ? Number(rawReset) : null;
+  const used = rawUsed !== null && Number.isFinite(Number(rawUsed)) ? Number(rawUsed) : null;
+  const retryAfterSeconds = parseRetryAfterSeconds(rawRetryAfter);
+
+  if (limit === null && remaining === null && resetEpoch === null && retryAfterSeconds === null) {
+    return null;
+  }
+
+  let resetMs = resetEpoch ? resetEpoch * 1000 : null;
+  if (!resetMs && retryAfterSeconds !== null) {
+    resetMs = Date.now() + retryAfterSeconds * 1000;
+  }
+  const effectiveResetEpoch = resetMs ? Math.ceil(resetMs / 1000) : resetEpoch;
+  const resetInSeconds = resetMs ? Math.max(0, Math.ceil((resetMs - Date.now()) / 1000)) : null;
+  const resetInMinutes = resetInSeconds !== null ? Math.max(0, Math.ceil(resetInSeconds / 60)) : null;
+
+  return {
+    limit,
+    remaining,
+    used,
+    resetEpoch: effectiveResetEpoch,
+    resetAtIso: resetMs ? new Date(resetMs).toISOString() : null,
+    resetInSeconds,
+    resetInMinutes,
+    retryAfterSeconds,
+    resource: rawResource || null,
+    isExhausted: remaining !== null ? remaining <= 0 : false,
+    source: 'github_headers'
+  };
+}
+
+function classifyRateLimitResponse(statusCode, rateLimit, bodyPayload = null) {
+  if (statusCode !== 403 && statusCode !== 429) {
+    return { isRateLimited: false, rateLimitType: null, resetEpoch: null, resetAtIso: null, message: null };
+  }
+
+  const bodyMsg = String((bodyPayload && (bodyPayload.message || bodyPayload.error)) || '');
+  const isSecondaryMessage = /secondary rate limit|abuse detection|temporarily throttled|wait a few minutes/i.test(bodyMsg);
+  const isPrimaryMessage = /api rate limit exceeded|rate limit exceeded/i.test(bodyMsg) && !isSecondaryMessage;
+
+  const hasRetryAfter = Boolean(rateLimit && rateLimit.retryAfterSeconds !== null);
+  const remainingZero = Boolean(rateLimit && rateLimit.remaining !== null && rateLimit.remaining <= 0);
+
+  let rateLimitType = null;
+  if (remainingZero || isPrimaryMessage) {
+    rateLimitType = 'primary';
+  } else if (hasRetryAfter || isSecondaryMessage || statusCode === 429) {
+    rateLimitType = 'secondary';
+  } else {
+    // 403 without remaining===0 or rate-limit message is normal auth/permission 403 unless Retry-After present
+    return { isRateLimited: false, rateLimitType: null, resetEpoch: null, resetAtIso: null, message: bodyMsg || null };
+  }
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  let waitSeconds = 60;
+  if (rateLimitType === 'secondary') {
+    waitSeconds = (rateLimit && rateLimit.retryAfterSeconds) ? Math.max(1, rateLimit.retryAfterSeconds) : 60;
+  } else if (rateLimit && rateLimit.resetEpoch && rateLimit.resetEpoch > nowSec) {
+    waitSeconds = rateLimit.resetEpoch - nowSec;
+  } else if (rateLimit && rateLimit.retryAfterSeconds) {
+    waitSeconds = Math.max(1, rateLimit.retryAfterSeconds);
+  }
+
+  const resetEpoch = (rateLimitType === 'primary' && rateLimit && rateLimit.resetEpoch && rateLimit.resetEpoch > nowSec)
+    ? rateLimit.resetEpoch
+    : nowSec + waitSeconds;
+  const resetAtIso = new Date(resetEpoch * 1000).toISOString();
+
+  const label = rateLimitType === 'secondary' ? 'GitHub secondary rate limit' : 'GitHub primary API rate limit';
+  const resetTimeText = new Date(resetEpoch * 1000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  const friendlyMessage = `${label} reached. GitHub requests paused until reset at ${resetTimeText} (~${Math.max(1, Math.ceil(waitSeconds / 60))}m).`;
+
+  return {
+    isRateLimited: true,
+    rateLimitType,
+    waitSeconds,
+    resetEpoch,
+    resetAtIso,
+    message: friendlyMessage
+  };
+}
+
+function getActiveRateLimitBlock(bucket = 'core', token = null) {
+  const scope = getTokenScopeKey(token);
+  const blockKey = `rl_block:${bucket}:${scope}`;
+  const entry = getCached(blockKey, { allowStale: false });
+  if (!entry || !entry.data) return null;
+  const resetEpoch = Number(entry.data.resetEpoch || 0);
+  if (resetEpoch * 1000 <= Date.now()) {
+    return null;
+  }
+  const remainingSec = Math.max(1, Math.ceil((resetEpoch * 1000 - Date.now()) / 1000));
+  return {
+    ...entry.data,
+    resetInSeconds: remainingSec,
+    resetInMinutes: Math.max(1, Math.ceil(remainingSec / 60))
+  };
+}
+
+function recordRateLimitBlock(bucket = 'core', token = null, classification = null, rateLimit = null) {
+  if (!classification || !classification.isRateLimited) return null;
+  const scope = getTokenScopeKey(token);
+  const blockKey = `rl_block:${bucket}:${scope}`;
+  const ttlSeconds = Math.max(5, Math.min(3600, classification.waitSeconds || 60));
+  const payload = {
+    bucket,
+    rateLimitType: classification.rateLimitType,
+    resetEpoch: classification.resetEpoch,
+    resetAtIso: classification.resetAtIso,
+    limit: rateLimit ? rateLimit.limit : null,
+    remaining: rateLimit ? rateLimit.remaining : 0,
+    resource: rateLimit ? rateLimit.resource : bucket,
+    message: classification.message
+  };
+  setCache(blockKey, payload, { cachedAt: new Date().toISOString() }, ttlSeconds);
+  return payload;
+}
 
 // Helper to get effective GitHub auth token
 function getEffectiveToken(sessionToken) {
@@ -59,39 +237,16 @@ function getHeaders(token, includeAuth = true) {
 }
 
 // Resilient fetch wrapper: catches network errors and retries unauthenticated if a configured token is invalid (401)
-async function safeGithubFetch(url, token = null) {
+async function safeGithubFetch(url, token = null, fetchImpl = fetch) {
   try {
-    let res = await fetch(url, { headers: getHeaders(token, true) });
+    let res = await fetchImpl(url, { headers: getHeaders(token, true) });
     if (res.status === 401 && getEffectiveToken(token)) {
-      res = await fetch(url, { headers: getHeaders(null, false) });
+      res = await fetchImpl(url, { headers: getHeaders(null, false) });
     }
     return { res, networkError: null };
   } catch (err) {
     return { res: null, networkError: err };
   }
-}
-
-// Parse rate limit headers
-function parseRateLimit(headers) {
-  if (!headers) return null;
-  const limit = parseInt(headers.get ? headers.get('x-ratelimit-limit') : headers['x-ratelimit-limit'] || '60', 10);
-  const remaining = parseInt(headers.get ? headers.get('x-ratelimit-remaining') : headers['x-ratelimit-remaining'] || '60', 10);
-  const resetEpoch = parseInt(headers.get ? headers.get('x-ratelimit-reset') : headers['x-ratelimit-reset'] || '0', 10);
-  const used = parseInt(headers.get ? headers.get('x-ratelimit-used') : headers['x-ratelimit-used'] || '0', 10);
-  const resource = headers.get ? headers.get('x-ratelimit-resource') : headers['x-ratelimit-resource'] || 'core';
-
-  const resetMs = resetEpoch ? resetEpoch * 1000 : Date.now();
-  const resetInMinutes = Math.max(0, Math.ceil((resetMs - Date.now()) / 60000));
-
-  return {
-    limit,
-    remaining,
-    used,
-    resetEpoch,
-    resetInMinutes,
-    resource,
-    isExhausted: remaining <= 0
-  };
 }
 
 // ----------------------------------------------------
@@ -118,9 +273,11 @@ function getCallbackUrl(req = null) {
 }
 
 function isOAuthConfigured() {
-  const clientId = process.env.GITHUB_CLIENT_ID;
-  const clientSecret = process.env.GITHUB_CLIENT_SECRET;
-  return Boolean(clientId && clientSecret && clientId.trim() !== '' && clientSecret.trim() !== '');
+  const clientId = (process.env.GITHUB_CLIENT_ID || '').trim();
+  const clientSecret = (process.env.GITHUB_CLIENT_SECRET || '').trim();
+  if (!clientId || !clientSecret) return false;
+  if (/^your_github_/i.test(clientId) || /^your_github_/i.test(clientSecret)) return false;
+  return true;
 }
 
 function getOAuthAuthorizeUrl(state, req = null) {
@@ -134,6 +291,9 @@ function getOAuthAuthorizeUrl(state, req = null) {
 async function exchangeOAuthCode(code, req = null) {
   if (!isOAuthConfigured()) {
     throw new Error('GitHub OAuth is not configured in environment variables.');
+  }
+  if (!code || typeof code !== 'string') {
+    throw new Error('GitHub OAuth authorization code is missing.');
   }
 
   const clientId = process.env.GITHUB_CLIENT_ID.trim();
@@ -150,14 +310,24 @@ async function exchangeOAuthCode(code, req = null) {
     body: JSON.stringify({
       client_id: clientId,
       client_secret: clientSecret,
-      code,
+      code: code.trim(),
       redirect_uri: callbackUrl
     })
   });
 
-  const data = await response.json();
-  if (data.error) {
-    throw new Error(`GitHub OAuth error: ${data.error_description || data.error}`);
+  const rawText = await response.text();
+  let data = null;
+  try {
+    data = JSON.parse(rawText);
+  } catch (e) {
+    throw new Error(`GitHub OAuth token exchange returned an invalid response (HTTP ${response.status}).`);
+  }
+
+  if (!response.ok || data.error) {
+    throw new Error(`GitHub OAuth error: ${data.error_description || data.error || `HTTP ${response.status}`}`);
+  }
+  if (!data.access_token || typeof data.access_token !== 'string') {
+    throw new Error('GitHub OAuth token exchange did not return an access token.');
   }
 
   return data; // { access_token, token_type, scope }
@@ -168,8 +338,18 @@ async function exchangeOAuthCode(code, req = null) {
 // ----------------------------------------------------
 
 async function getAuthenticatedUser(accessToken) {
+  if (!accessToken || typeof accessToken !== 'string') {
+    throw new Error('A valid GitHub OAuth access token is required.');
+  }
+
+  const oauthHeaders = {
+    'Accept': 'application/vnd.github.v3+json',
+    'User-Agent': USER_AGENT,
+    'Authorization': `Bearer ${accessToken}`
+  };
+
   const res = await fetch(`${GITHUB_API_BASE}/user`, {
-    headers: getHeaders(accessToken)
+    headers: oauthHeaders
   });
 
   const rateLimit = parseRateLimit(res.headers);
@@ -178,18 +358,23 @@ async function getAuthenticatedUser(accessToken) {
   }
 
   const user = await res.json();
+  if (!user || !user.id || !user.login) {
+    throw new Error('GitHub user profile response was incomplete.');
+  }
 
   // Try to retrieve primary verified email if private
-  let email = user.email;
-  if (!email && accessToken) {
+  let email = user.email || null;
+  if (!email) {
     try {
       const emailRes = await fetch(`${GITHUB_API_BASE}/user/emails`, {
-        headers: getHeaders(accessToken)
+        headers: oauthHeaders
       });
       if (emailRes.ok) {
         const emails = await emailRes.json();
-        const primary = emails.find(e => e.primary && e.verified);
-        if (primary) email = primary.email;
+        if (Array.isArray(emails)) {
+          const best = emails.find(e => e.primary && e.verified) || emails.find(e => e.verified) || emails[0];
+          if (best && best.email) email = best.email;
+        }
       }
     } catch (e) {
       // Non-critical email retrieval failure
@@ -199,7 +384,7 @@ async function getAuthenticatedUser(accessToken) {
   return { user: { ...user, email }, rateLimit };
 }
 
-async function getUserProfile(username, token = null) {
+async function getUserProfile(username, token = null, { fetchImpl = fetch } = {}) {
   const cleanUser = String(username || '').trim();
   if (!cleanUser) {
     return { user: null, rateLimit: null, error: 'INVALID_USERNAME' };
@@ -207,145 +392,381 @@ async function getUserProfile(username, token = null) {
   const cacheKey = `user_profile:${cleanUser.toLowerCase()}`;
   const cached = getCached(cacheKey);
   if (cached) {
-    return { user: cached.data, rateLimit: cached.headers.rateLimit || null, cached: true };
+    return {
+      user: cached.data,
+      rateLimit: cached.headers.rateLimit || null,
+      cached: true,
+      stale: false,
+      cachedAt: cached.headers.cachedAt || null
+    };
   }
 
-  const { res, networkError } = await safeGithubFetch(`${GITHUB_API_BASE}/users/${encodeURIComponent(cleanUser)}`, token);
-  if (networkError || !res) {
-    return { user: null, rateLimit: null, error: 'NETWORK_ERROR' };
-  }
+  return withInFlightDedupe(cacheKey, async () => {
+    const activeBlock = getActiveRateLimitBlock('core', token);
+    if (activeBlock) {
+      const stale = getCached(cacheKey, { allowStale: true });
+      return {
+        user: stale ? stale.data : null,
+        rateLimit: {
+          limit: activeBlock.limit,
+          remaining: activeBlock.remaining,
+          resetEpoch: activeBlock.resetEpoch,
+          resetAtIso: activeBlock.resetAtIso,
+          resetInMinutes: activeBlock.resetInMinutes,
+          resource: 'core',
+          rateLimitType: activeBlock.rateLimitType,
+          isExhausted: true
+        },
+        cached: Boolean(stale),
+        stale: Boolean(stale),
+        rateLimited: true,
+        rateLimitType: activeBlock.rateLimitType,
+        error: 'RATE_LIMIT_EXCEEDED',
+        errorMessage: activeBlock.message
+      };
+    }
 
-  const rateLimit = parseRateLimit(res.headers);
-  if (res.status === 404) {
-    return { user: null, rateLimit, error: 'NOT_FOUND' };
-  }
-  if (!res.ok) {
-    return { user: null, rateLimit, error: `HTTP_${res.status}` };
-  }
+    const { res, networkError } = await safeGithubFetch(`${GITHUB_API_BASE}/users/${encodeURIComponent(cleanUser)}`, token, fetchImpl);
+    if (networkError || !res) {
+      const stale = getCached(cacheKey, { allowStale: true });
+      return {
+        user: stale ? stale.data : null,
+        rateLimit: stale ? (stale.headers.rateLimit || null) : null,
+        cached: Boolean(stale),
+        stale: Boolean(stale),
+        error: 'NETWORK_ERROR',
+        errorMessage: 'GitHub profile request failed cleanly.'
+      };
+    }
 
-  const user = await res.json();
-  setCache(cacheKey, user, { rateLimit }, 600); // 10 min cache
-  return { user, rateLimit, cached: false };
+    const rateLimit = parseRateLimit(res.headers);
+    if (res.status === 404) {
+      return { user: null, rateLimit, error: 'NOT_FOUND' };
+    }
+    if (!res.ok) {
+      let errBody = null;
+      if (res.status === 403 || res.status === 429) {
+        try { errBody = await res.json(); } catch (e) {}
+      }
+      const rlClass = classifyRateLimitResponse(res.status, rateLimit, errBody);
+      if (rlClass.isRateLimited) {
+        recordRateLimitBlock('core', token, rlClass, rateLimit);
+        const stale = getCached(cacheKey, { allowStale: true });
+        return {
+          user: stale ? stale.data : null,
+          rateLimit: rateLimit ? { ...rateLimit, resetEpoch: rlClass.resetEpoch, resetAtIso: rlClass.resetAtIso, rateLimitType: rlClass.rateLimitType } : null,
+          cached: Boolean(stale),
+          stale: Boolean(stale),
+          rateLimited: true,
+          rateLimitType: rlClass.rateLimitType,
+          error: 'RATE_LIMIT_EXCEEDED',
+          errorMessage: rlClass.message
+        };
+      }
+      const stale = getCached(cacheKey, { allowStale: true });
+      return {
+        user: stale ? stale.data : null,
+        rateLimit,
+        cached: Boolean(stale),
+        stale: Boolean(stale),
+        error: `HTTP_${res.status}`
+      };
+    }
+
+    const user = await res.json();
+    setCache(cacheKey, user, { rateLimit }, 600); // 10 min cache
+    return { user, rateLimit, cached: false, stale: false };
+  });
 }
 
-async function getUserRepositories(username, token = null, { sort = 'updated', perPage = 6 } = {}) {
+async function getUserRepositories(username, token = null, { sort = 'updated', perPage = 6, fetchImpl = fetch } = {}) {
   const cleanUser = String(username || '').trim();
-  const cacheKey = `user_repos:${cleanUser.toLowerCase()}:${perPage}`;
-  const cached = getCached(cacheKey);
-  if (cached) {
-    const enrichedCached = (Array.isArray(cached.data) ? cached.data : []).map(r => ({
+  if (!cleanUser) {
+    return { repos: [], rateLimit: null, error: 'INVALID_USERNAME' };
+  }
+  const cacheKey = `user_repos:${cleanUser.toLowerCase()}:${sort}:${perPage}`;
+
+  const hydrateRepos = (rawList) => (Array.isArray(rawList) ? rawList : []).map(r => ({
+    ...r,
+    health: r.health || calculateRepositoryHealth({
       ...r,
-      health: r.health || calculateRepositoryHealth({
-        ...r,
-        updated_at: r.updatedAt,
-        stargazers_count: r.stars,
-        forks_count: r.forks,
-        open_issues_count: r.openIssues
-      })
-    }));
-    return { repos: enrichedCached, rateLimit: cached.headers.rateLimit || null, cached: true };
-  }
-
-  const { res, networkError } = await safeGithubFetch(`${GITHUB_API_BASE}/users/${encodeURIComponent(cleanUser)}/repos?sort=${sort}&per_page=${perPage}&type=owner`, token);
-  if (networkError || !res) {
-    return { repos: [], rateLimit: null, error: 'NETWORK_ERROR' };
-  }
-
-  const rateLimit = parseRateLimit(res.headers);
-  if (!res.ok) {
-    return { repos: [], rateLimit, error: `HTTP_${res.status}` };
-  }
-
-  const repos = await res.json();
-  const sanitized = (Array.isArray(repos) ? repos : []).map(r => ({
-    id: r.id,
-    name: r.name,
-    fullName: r.full_name,
-    description: r.description || 'No description provided.',
-    htmlUrl: r.html_url,
-    language: r.language || 'Markdown',
-    stars: r.stargazers_count,
-    forks: r.forks_count,
-    openIssues: r.open_issues_count,
-    updatedAt: r.updated_at,
-    license: r.license ? (r.license.spdx_id || r.license.name) : null,
-    topics: Array.isArray(r.topics) ? r.topics.slice(0, 6) : [],
-    health: calculateRepositoryHealth(r)
+      updated_at: r.updatedAt,
+      stargazers_count: r.stars,
+      forks_count: r.forks,
+      open_issues_count: r.openIssues
+    })
   }));
 
-  setCache(cacheKey, sanitized, { rateLimit }, 300);
-  return { repos: sanitized, rateLimit, cached: false };
+  const cached = getCached(cacheKey);
+  if (cached) {
+    return {
+      repos: hydrateRepos(cached.data),
+      rateLimit: cached.headers.rateLimit || null,
+      cached: true,
+      stale: false,
+      cachedAt: cached.headers.cachedAt || null
+    };
+  }
+
+  return withInFlightDedupe(cacheKey, async () => {
+    const activeBlock = getActiveRateLimitBlock('core', token);
+    if (activeBlock) {
+      const stale = getCached(cacheKey, { allowStale: true });
+      return {
+        repos: stale ? hydrateRepos(stale.data) : [],
+        rateLimit: {
+          limit: activeBlock.limit,
+          remaining: activeBlock.remaining,
+          resetEpoch: activeBlock.resetEpoch,
+          resetAtIso: activeBlock.resetAtIso,
+          resetInMinutes: activeBlock.resetInMinutes,
+          resource: 'core',
+          rateLimitType: activeBlock.rateLimitType,
+          isExhausted: true
+        },
+        cached: Boolean(stale),
+        stale: Boolean(stale),
+        rateLimited: true,
+        rateLimitType: activeBlock.rateLimitType,
+        error: 'RATE_LIMIT_EXCEEDED',
+        errorMessage: activeBlock.message
+      };
+    }
+
+    const { res, networkError } = await safeGithubFetch(`${GITHUB_API_BASE}/users/${encodeURIComponent(cleanUser)}/repos?sort=${sort}&per_page=${perPage}&type=owner`, token, fetchImpl);
+    if (networkError || !res) {
+      const stale = getCached(cacheKey, { allowStale: true });
+      return {
+        repos: stale ? hydrateRepos(stale.data) : [],
+        rateLimit: stale ? (stale.headers.rateLimit || null) : null,
+        cached: Boolean(stale),
+        stale: Boolean(stale),
+        error: 'NETWORK_ERROR'
+      };
+    }
+
+    const rateLimit = parseRateLimit(res.headers);
+    if (!res.ok) {
+      let errBody = null;
+      if (res.status === 403 || res.status === 429) {
+        try { errBody = await res.json(); } catch (e) {}
+      }
+      const rlClass = classifyRateLimitResponse(res.status, rateLimit, errBody);
+      if (rlClass.isRateLimited) {
+        recordRateLimitBlock('core', token, rlClass, rateLimit);
+        const stale = getCached(cacheKey, { allowStale: true });
+        return {
+          repos: stale ? hydrateRepos(stale.data) : [],
+          rateLimit: rateLimit ? { ...rateLimit, resetEpoch: rlClass.resetEpoch, resetAtIso: rlClass.resetAtIso, rateLimitType: rlClass.rateLimitType } : null,
+          cached: Boolean(stale),
+          stale: Boolean(stale),
+          rateLimited: true,
+          rateLimitType: rlClass.rateLimitType,
+          error: 'RATE_LIMIT_EXCEEDED',
+          errorMessage: rlClass.message
+        };
+      }
+      const stale = getCached(cacheKey, { allowStale: true });
+      return {
+        repos: stale ? hydrateRepos(stale.data) : [],
+        rateLimit,
+        cached: Boolean(stale),
+        stale: Boolean(stale),
+        error: `HTTP_${res.status}`
+      };
+    }
+
+    const repos = await res.json();
+    const seenIds = new Set();
+    const cleanUserLower = cleanUser.toLowerCase();
+    const sanitized = (Array.isArray(repos) ? repos : [])
+      .filter(r => {
+        if (!r || r.id === undefined || r.id === null) return false;
+        if (r.owner && r.owner.type && String(r.owner.type).toLowerCase() !== 'user') return false;
+        if (r.owner && r.owner.login && String(r.owner.login).toLowerCase() !== cleanUserLower) return false;
+        const key = String(r.id);
+        if (seenIds.has(key)) return false;
+        seenIds.add(key);
+        return true;
+      })
+      .map(r => ({
+        id: r.id,
+        name: r.name,
+        fullName: r.full_name,
+        description: r.description || 'No description provided.',
+        htmlUrl: r.html_url,
+        language: r.language || 'Markdown',
+        stars: r.stargazers_count,
+        forks: r.forks_count,
+        openIssues: r.open_issues_count,
+        updatedAt: r.updated_at,
+        license: r.license ? (r.license.spdx_id || r.license.name) : null,
+        topics: Array.isArray(r.topics) ? r.topics.slice(0, 6) : [],
+        health: calculateRepositoryHealth(r)
+      }));
+
+    setCache(cacheKey, sanitized, { rateLimit }, 600);
+    return { repos: sanitized, rateLimit, cached: false, stale: false };
+  });
 }
 
-async function getUserEvents(username, token = null, { perPage = 8 } = {}) {
+async function getUserEvents(username, token = null, { perPage = 8, fetchImpl = fetch } = {}) {
   const cleanUser = String(username || '').trim();
+  if (!cleanUser) {
+    return { events: [], rateLimit: null, error: 'INVALID_USERNAME' };
+  }
   const cacheKey = `user_events:${cleanUser.toLowerCase()}:${perPage}`;
   const cached = getCached(cacheKey);
   if (cached) {
-    return { events: cached.data, rateLimit: cached.headers.rateLimit || null, cached: true };
+    return {
+      events: cached.data,
+      rateLimit: cached.headers.rateLimit || null,
+      cached: true,
+      stale: false,
+      cachedAt: cached.headers.cachedAt || null
+    };
   }
 
-  const { res, networkError } = await safeGithubFetch(`${GITHUB_API_BASE}/users/${encodeURIComponent(cleanUser)}/events/public?per_page=${perPage}`, token);
-  if (networkError || !res) {
-    return { events: [], rateLimit: null, error: 'NETWORK_ERROR' };
-  }
-
-  const rateLimit = parseRateLimit(res.headers);
-  if (!res.ok) {
-    return { events: [], rateLimit, error: `HTTP_${res.status}` };
-  }
-
-  const rawEvents = await res.json();
-  const events = (Array.isArray(rawEvents) ? rawEvents : []).map(ev => {
-    let actionTitle = 'Activity in repository';
-    let type = 'general';
-    let status = 'Logged';
-
-    if (ev.type === 'PushEvent') {
-      type = 'push';
-      const commitCount = ev.payload?.commits?.length || 1;
-      actionTitle = `Pushed ${commitCount} commit${commitCount > 1 ? 's' : ''}`;
-      status = 'Committed';
-    } else if (ev.type === 'PullRequestEvent') {
-      type = 'pr';
-      const action = ev.payload?.action || 'opened';
-      actionTitle = `Pull Request ${action}: "${(ev.payload?.pull_request?.title || '').slice(0, 50)}"`;
-      status = action === 'closed' && ev.payload?.pull_request?.merged ? 'Merged' : action;
-    } else if (ev.type === 'IssuesEvent') {
-      type = 'issue';
-      const action = ev.payload?.action || 'opened';
-      actionTitle = `Issue ${action}: "${(ev.payload?.issue?.title || '').slice(0, 50)}"`;
-      status = action;
-    } else if (ev.type === 'IssueCommentEvent') {
-      type = 'comment';
-      actionTitle = `Commented on issue #${ev.payload?.issue?.number || ''}`;
-      status = 'Commented';
-    } else if (ev.type === 'WatchEvent') {
-      type = 'star';
-      actionTitle = 'Starred repository';
-      status = 'Starred';
+  return withInFlightDedupe(cacheKey, async () => {
+    const activeBlock = getActiveRateLimitBlock('core', token);
+    if (activeBlock) {
+      const stale = getCached(cacheKey, { allowStale: true });
+      return {
+        events: stale ? stale.data : [],
+        rateLimit: {
+          limit: activeBlock.limit,
+          remaining: activeBlock.remaining,
+          resetEpoch: activeBlock.resetEpoch,
+          resetAtIso: activeBlock.resetAtIso,
+          resetInMinutes: activeBlock.resetInMinutes,
+          resource: 'core',
+          rateLimitType: activeBlock.rateLimitType,
+          isExhausted: true
+        },
+        cached: Boolean(stale),
+        stale: Boolean(stale),
+        rateLimited: true,
+        rateLimitType: activeBlock.rateLimitType,
+        error: 'RATE_LIMIT_EXCEEDED',
+        errorMessage: activeBlock.message
+      };
     }
 
-    return {
-      id: ev.id,
-      type,
-      repo: ev.repo?.name || '',
-      repoUrl: `https://github.com/${ev.repo?.name || ''}`,
-      title: actionTitle,
-      status,
-      timestamp: formatRelativeTime(ev.created_at)
-    };
-  });
+    const { res, networkError } = await safeGithubFetch(`${GITHUB_API_BASE}/users/${encodeURIComponent(cleanUser)}/events/public?per_page=${perPage}`, token, fetchImpl);
+    if (networkError || !res) {
+      const stale = getCached(cacheKey, { allowStale: true });
+      return {
+        events: stale ? stale.data : [],
+        rateLimit: stale ? (stale.headers.rateLimit || null) : null,
+        cached: Boolean(stale),
+        stale: Boolean(stale),
+        error: 'NETWORK_ERROR'
+      };
+    }
 
-  setCache(cacheKey, events, { rateLimit }, 180);
-  return { events, rateLimit, cached: false };
+    const rateLimit = parseRateLimit(res.headers);
+    if (!res.ok) {
+      let errBody = null;
+      if (res.status === 403 || res.status === 429) {
+        try { errBody = await res.json(); } catch (e) {}
+      }
+      const rlClass = classifyRateLimitResponse(res.status, rateLimit, errBody);
+      if (rlClass.isRateLimited) {
+        recordRateLimitBlock('core', token, rlClass, rateLimit);
+        const stale = getCached(cacheKey, { allowStale: true });
+        return {
+          events: stale ? stale.data : [],
+          rateLimit: rateLimit ? { ...rateLimit, resetEpoch: rlClass.resetEpoch, resetAtIso: rlClass.resetAtIso, rateLimitType: rlClass.rateLimitType } : null,
+          cached: Boolean(stale),
+          stale: Boolean(stale),
+          rateLimited: true,
+          rateLimitType: rlClass.rateLimitType,
+          error: 'RATE_LIMIT_EXCEEDED',
+          errorMessage: rlClass.message
+        };
+      }
+      const stale = getCached(cacheKey, { allowStale: true });
+      return {
+        events: stale ? stale.data : [],
+        rateLimit,
+        cached: Boolean(stale),
+        stale: Boolean(stale),
+        error: `HTTP_${res.status}`
+      };
+    }
+
+    const rawEvents = await res.json();
+    const events = (Array.isArray(rawEvents) ? rawEvents : []).map(ev => {
+      let actionTitle = 'Activity in repository';
+      let type = 'general';
+      let status = 'Logged';
+
+      if (ev.type === 'PushEvent') {
+        type = 'push';
+        const commitCount = ev.payload?.commits?.length || 1;
+        actionTitle = `Pushed ${commitCount} commit${commitCount > 1 ? 's' : ''}`;
+        status = 'Committed';
+      } else if (ev.type === 'PullRequestEvent') {
+        type = 'pr';
+        const action = ev.payload?.action || 'opened';
+        actionTitle = `Pull Request ${action}: "${(ev.payload?.pull_request?.title || '').slice(0, 50)}"`;
+        status = action === 'closed' && ev.payload?.pull_request?.merged ? 'Merged' : action;
+      } else if (ev.type === 'IssuesEvent') {
+        type = 'issue';
+        const action = ev.payload?.action || 'opened';
+        actionTitle = `Issue ${action}: "${(ev.payload?.issue?.title || '').slice(0, 50)}"`;
+        status = action;
+      } else if (ev.type === 'IssueCommentEvent') {
+        type = 'comment';
+        actionTitle = `Commented on issue #${ev.payload?.issue?.number || ''}`;
+        status = 'Commented';
+      } else if (ev.type === 'WatchEvent') {
+        type = 'star';
+        actionTitle = 'Starred repository';
+        status = 'Starred';
+      }
+
+      return {
+        id: ev.id,
+        type,
+        repo: ev.repo?.name || '',
+        repoUrl: `https://github.com/${ev.repo?.name || ''}`,
+        title: actionTitle,
+        status,
+        timestamp: formatRelativeTime(ev.created_at)
+      };
+    });
+
+    setCache(cacheKey, events, { rateLimit }, 300);
+    return { events, rateLimit, cached: false, stale: false };
+  });
 }
 
 // ----------------------------------------------------
 // 3. Issue Discovery & Live Search
 // ----------------------------------------------------
 
-async function searchIssues({ query = '', label = 'all', language = 'all', difficulty = 'all', page = 1, perPage = 10 } = {}, userSkills = [], token = null) {
+function enrichIssueForUser(issue, userSkills = []) {
+  const compat = calculateCompatibility(
+    {
+      title: issue.title,
+      body: issue.body || '',
+      comments: issue.commentsCount ?? issue.comments ?? 0,
+      created_at: issue.createdAtExact || issue.created_at || null
+    },
+    issue.repoName || '',
+    issue.labels || [],
+    userSkills
+  );
+
+  return {
+    ...issue,
+    compatibilityScore: compat.score,
+    compatibilityBreakdown: compat.breakdown
+  };
+}
+
+async function searchIssues({ query = '', label = 'all', language = 'all', difficulty = 'all', page = 1, perPage = 10 } = {}, userSkills = [], token = null, { cacheOnly = false, fetchImpl = fetch } = {}) {
   const safePage = Math.max(1, Math.min(100, parseInt(page, 10) || 1));
   const safePerPage = Math.max(1, Math.min(50, parseInt(perPage, 10) || 10));
 
@@ -374,113 +795,205 @@ async function searchIssues({ query = '', label = 'all', language = 'all', diffi
   const queryString = qParts.join(' ');
   const cacheKey = `issue_search:${queryString}:${safePage}:${safePerPage}`;
 
-  // Check cache (5 min TTL)
+  // Check fresh cache (10 min TTL)
   const cached = getCached(cacheKey);
   if (cached) {
+    const cachedIssues = Array.isArray(cached.data?.issues)
+      ? cached.data.issues.map(iss => enrichIssueForUser(iss, userSkills))
+      : [];
     return {
       ...cached.data,
+      issues: cachedIssues,
       rateLimit: cached.headers.rateLimit || null,
-      cached: true
+      cached: true,
+      stale: false,
+      cachedAt: cached.headers.cachedAt || null
     };
   }
 
-  const url = `${GITHUB_API_BASE}/search/issues?q=${encodeURIComponent(queryString)}&sort=updated&order=desc&page=${safePage}&per_page=${safePerPage}`;
-  const { res, networkError } = await safeGithubFetch(url, token);
+  if (cacheOnly) {
+    const stale = getCached(cacheKey, { allowStale: true });
+    if (stale) {
+      const staleIssues = Array.isArray(stale.data?.issues)
+        ? stale.data.issues.map(iss => enrichIssueForUser(iss, userSkills))
+        : [];
+      return {
+        ...stale.data,
+        issues: staleIssues,
+        rateLimit: stale.headers.rateLimit || null,
+        cached: true,
+        stale: true,
+        cachedAt: stale.headers.cachedAt || null
+      };
+    }
+    return { issues: [], totalCount: 0, page: safePage, perPage: safePerPage, totalPages: 0, rateLimit: null, cached: false };
+  }
 
-  if (networkError || !res) {
-    return {
-      issues: [],
-      totalCount: 0,
+  return withInFlightDedupe(cacheKey, async () => {
+    const activeBlock = getActiveRateLimitBlock('search', token);
+    if (activeBlock) {
+      const stale = getCached(cacheKey, { allowStale: true });
+      const staleIssues = stale && Array.isArray(stale.data?.issues)
+        ? stale.data.issues.map(iss => enrichIssueForUser(iss, userSkills))
+        : [];
+      return {
+        ...(stale ? stale.data : { totalCount: 0, page: safePage, perPage: safePerPage, totalPages: 0 }),
+        issues: staleIssues,
+        rateLimit: {
+          limit: activeBlock.limit,
+          remaining: activeBlock.remaining,
+          resetEpoch: activeBlock.resetEpoch,
+          resetAtIso: activeBlock.resetAtIso,
+          resetInMinutes: activeBlock.resetInMinutes,
+          resource: 'search',
+          rateLimitType: activeBlock.rateLimitType,
+          isExhausted: true
+        },
+        cached: Boolean(stale),
+        stale: Boolean(stale),
+        rateLimited: true,
+        rateLimitType: activeBlock.rateLimitType,
+        rateLimitResetAtIso: activeBlock.resetAtIso || null,
+        error: 'RATE_LIMIT_EXCEEDED',
+        errorMessage: stale ? `${activeBlock.message} Showing cached issues.` : activeBlock.message
+      };
+    }
+
+    const url = `${GITHUB_API_BASE}/search/issues?q=${encodeURIComponent(queryString)}&sort=updated&order=desc&page=${safePage}&per_page=${safePerPage}`;
+    const { res, networkError } = await safeGithubFetch(url, token, fetchImpl);
+
+    if (networkError || !res) {
+      const stale = getCached(cacheKey, { allowStale: true });
+      if (stale) {
+        return {
+          ...stale.data,
+          issues: (stale.data?.issues || []).map(iss => enrichIssueForUser(iss, userSkills)),
+          rateLimit: stale.headers.rateLimit || null,
+          cached: true,
+          stale: true,
+          error: 'NETWORK_ERROR',
+          errorMessage: 'Unable to reach GitHub API. Showing preserved cached issues.'
+        };
+      }
+      return {
+        issues: [],
+        totalCount: 0,
+        page: safePage,
+        perPage: safePerPage,
+        totalPages: 0,
+        rateLimit: null,
+        error: 'NETWORK_ERROR',
+        errorMessage: 'Unable to reach GitHub API. Please check your internet connection and try again.'
+      };
+    }
+
+    const rateLimit = parseRateLimit(res.headers);
+
+    if (res.status === 403 || res.status === 429) {
+      let errBody = null;
+      try { errBody = await res.json(); } catch (e) {}
+      const rlClass = classifyRateLimitResponse(res.status, rateLimit, errBody);
+      if (rlClass.isRateLimited) {
+        recordRateLimitBlock('search', token, rlClass, rateLimit);
+      }
+      const stale = getCached(cacheKey, { allowStale: true });
+      const rlMsg = rlClass.message || `GitHub API search rate limit reached. Limit resets in ${rateLimit?.resetInMinutes ?? 1} minute(s).`;
+      return {
+        ...(stale ? stale.data : { totalCount: 0, page: safePage, perPage: safePerPage, totalPages: 0 }),
+        issues: stale && Array.isArray(stale.data?.issues)
+          ? stale.data.issues.map(iss => enrichIssueForUser(iss, userSkills))
+          : [],
+        rateLimit: rateLimit ? { ...rateLimit, resetEpoch: rlClass.resetEpoch || rateLimit.resetEpoch, resetAtIso: rlClass.resetAtIso || rateLimit.resetAtIso, rateLimitType: rlClass.rateLimitType } : null,
+        cached: Boolean(stale),
+        stale: Boolean(stale),
+        rateLimited: true,
+        rateLimitType: rlClass.rateLimitType || 'primary',
+        rateLimitResetAtIso: rlClass.resetAtIso || (rateLimit && rateLimit.resetAtIso) || null,
+        error: 'RATE_LIMIT_EXCEEDED',
+        errorMessage: stale ? `${rlMsg} Showing preserved cached issues.` : rlMsg
+      };
+    }
+
+    if (!res.ok) {
+      const stale = getCached(cacheKey, { allowStale: true });
+      if (stale) {
+        return {
+          ...stale.data,
+          issues: (stale.data?.issues || []).map(iss => enrichIssueForUser(iss, userSkills)),
+          rateLimit,
+          cached: true,
+          stale: true,
+          error: `API_ERROR_${res.status}`,
+          errorMessage: `GitHub API returned HTTP ${res.status}. Showing preserved cached issues.`
+        };
+      }
+      return {
+        issues: [],
+        totalCount: 0,
+        page: safePage,
+        perPage: safePerPage,
+        totalPages: 0,
+        rateLimit,
+        error: `API_ERROR_${res.status}`,
+        errorMessage: `GitHub API returned error HTTP ${res.status}.`
+      };
+    }
+
+    const data = await res.json();
+    const totalCount = data.total_count || 0;
+    const totalPages = Math.min(Math.ceil(totalCount / safePerPage), 100); // GitHub limits search pagination to top 1,000 results
+
+    // Process & normalize raw issue items before applying per-user compatibility scoring
+    const baseIssues = (data.items || []).map(item => {
+      const repoMatch = (item.repository_url || '').match(/repos\/(.+?\/.+?)$/);
+      const repoName = repoMatch ? repoMatch[1] : '';
+
+      // Extract labels
+      const labels = (item.labels || []).map(l => ({
+        name: l.name,
+        color: `#${l.color}`,
+        isGfi: l.name.toLowerCase().includes('good first issue') || l.name.toLowerCase().includes('beginner'),
+        isHw: l.name.toLowerCase().includes('help wanted')
+      }));
+
+      // Categorize
+      const isGoodFirst = labels.some(l => l.isGfi);
+      const isHelpWanted = labels.some(l => l.isHw);
+      const category = isGoodFirst ? 'good-first-issue' : isHelpWanted ? 'help-wanted' : 'recommended';
+
+      return {
+        id: item.id,
+        number: item.number,
+        title: item.title,
+        body: item.body ? String(item.body).slice(0, 600) : '',
+        htmlUrl: item.html_url,
+        repoName,
+        repoUrl: `https://github.com/${repoName}`,
+        labels,
+        category,
+        difficulty: isGoodFirst ? 'Beginner' : isHelpWanted ? 'Intermediate' : 'Advanced',
+        commentsCount: item.comments || 0,
+        createdAt: formatRelativeTime(item.created_at),
+        createdAtExact: item.created_at || null,
+        author: item.user ? item.user.login : 'unknown'
+      };
+    });
+
+    const basePayload = {
+      issues: baseIssues,
+      totalCount,
       page: safePage,
       perPage: safePerPage,
-      totalPages: 0,
-      rateLimit: null,
-      error: 'NETWORK_ERROR',
-      errorMessage: 'Unable to reach GitHub API. Please check your internet connection and try again.'
+      totalPages
     };
-  }
 
-  const rateLimit = parseRateLimit(res.headers);
-
-  if (res.status === 403) {
-    return {
-      issues: [],
-      totalCount: 0,
-      page: safePage,
-      perPage: safePerPage,
-      totalPages: 0,
-      rateLimit,
-      error: 'RATE_LIMIT_EXCEEDED',
-      errorMessage: `GitHub API search rate limit reached. Limit resets in ${rateLimit ? rateLimit.resetInMinutes : 1} minute(s).`
-    };
-  }
-
-  if (!res.ok) {
-    return {
-      issues: [],
-      totalCount: 0,
-      page: safePage,
-      perPage: safePerPage,
-      totalPages: 0,
-      rateLimit,
-      error: `API_ERROR_${res.status}`,
-      errorMessage: `GitHub API returned error HTTP ${res.status}.`
-    };
-  }
-
-  const data = await res.json();
-  const totalCount = data.total_count || 0;
-  const totalPages = Math.min(Math.ceil(totalCount / safePerPage), 100); // GitHub limits search pagination to top 1,000 results
-
-  // Process & enrich issue items with compatibility scores
-  const issues = (data.items || []).map(item => {
-    const repoMatch = (item.repository_url || '').match(/repos\/(.+?\/.+?)$/);
-    const repoName = repoMatch ? repoMatch[1] : '';
-
-    // Extract labels
-    const labels = (item.labels || []).map(l => ({
-      name: l.name,
-      color: `#${l.color}`,
-      isGfi: l.name.toLowerCase().includes('good first issue') || l.name.toLowerCase().includes('beginner'),
-      isHw: l.name.toLowerCase().includes('help wanted')
-    }));
-
-    // Categorize
-    const isGoodFirst = labels.some(l => l.isGfi);
-    const isHelpWanted = labels.some(l => l.isHw);
-    const category = isGoodFirst ? 'good-first-issue' : isHelpWanted ? 'help-wanted' : 'recommended';
-
-    // Algorithmic compatibility scoring based on real issue metadata and user profile
-    const compat = calculateCompatibility(item, repoName, labels, userSkills);
-
-    return {
-      id: item.id,
-      number: item.number,
-      title: item.title,
-      htmlUrl: item.html_url,
-      repoName,
-      repoUrl: `https://github.com/${repoName}`,
-      labels,
-      category,
-      difficulty: isGoodFirst ? 'Beginner' : isHelpWanted ? 'Intermediate' : 'Advanced',
-      commentsCount: item.comments || 0,
-      createdAt: formatRelativeTime(item.created_at),
-      compatibilityScore: compat.score,
-      compatibilityBreakdown: compat.breakdown,
-      author: item.user ? item.user.login : 'unknown'
-    };
-  });
-
-  const payload = {
-    issues,
-    totalCount,
-    page: safePage,
-    perPage: safePerPage,
-    totalPages
-  };
-
-  setCache(cacheKey, payload, { rateLimit }, 300); // 5 min cache
-  return { ...payload, rateLimit, cached: false };
+    setCache(cacheKey, basePayload, { rateLimit }, 600); // 10 min cache (user-agnostic base payload)
+    const issues = baseIssues.map(iss => enrichIssueForUser(iss, userSkills));
+    return { ...basePayload, issues, rateLimit, cached: false, stale: false };
+  }).then(result => ({
+    ...result,
+    issues: Array.isArray(result.issues) ? result.issues.map(iss => enrichIssueForUser(iss, userSkills)) : []
+  }));
 }
 
 // ----------------------------------------------------
@@ -501,6 +1014,23 @@ function normalizeCompatibilitySkills(skills = []) {
   )];
 }
 
+const COMPATIBILITY_SKILL_ALIASES = {
+  ...SKILL_ALIASES,
+  javascript: ['javascript', 'js', 'node.js', 'nodejs'],
+  'react.js': ['react', 'react.js']
+};
+
+function matchSkillsAgainstCorpus(skills, textCorpus) {
+  return skills.filter(skill => {
+    const terms = COMPATIBILITY_SKILL_ALIASES[skill] || [skill];
+    return terms.some(term => {
+      const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const pattern = new RegExp(`(^|[^a-z0-9+#])${escapedTerm}($|[^a-z0-9+#])`, 'i');
+      return pattern.test(textCorpus);
+    });
+  });
+}
+
 function calculateCompatibility(issue, repoName, labels, userSkills = [], requestedDifficulty = 'all') {
   // Weighted profile matching: skills 45%, difficulty 30%, engagement 15%, freshness 10%.
   const skills = normalizeCompatibilitySkills(userSkills);
@@ -513,39 +1043,7 @@ function calculateCompatibility(issue, repoName, labels, userSkills = [], reques
     ...(labels || []).map(label => label.name)
   ].filter(Boolean).join(' ').toLowerCase();
 
-  const skillAliases = {
-    js: ['javascript', 'js'],
-    javascript: ['javascript', 'js', 'node.js', 'nodejs'],
-    ts: ['typescript', 'ts'],
-    typescript: ['typescript', 'ts'],
-    py: ['python', 'py'],
-    python: ['python', 'py'],
-    react: ['react', 'react.js'],
-    'react.js': ['react', 'react.js'],
-    node: ['node', 'node.js', 'nodejs'],
-    'node.js': ['node', 'node.js', 'nodejs'],
-    'c++': ['c++', 'cpp'],
-    cpp: ['cpp', 'c++'],
-    'c#': ['c#', 'csharp'],
-    csharp: ['csharp', 'c#'],
-    go: ['golang', 'go'],
-    golang: ['golang', 'go']
-  };
-
-  const matchedSkills = skills.filter(skill => {
-    const terms = skillAliases[skill] || [skill];
-
-    return terms.some(term => {
-      const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-      const pattern = new RegExp(
-        `(^|[^a-z0-9+#])${escapedTerm}($|[^a-z0-9+#])`,
-        'i'
-      );
-
-      return pattern.test(textCorpus);
-    });
-  });
+  const matchedSkills = matchSkillsAgainstCorpus(skills, textCorpus);
 
   const skillOverlapScore = skills.length === 0
     ? 80
@@ -625,38 +1123,7 @@ function calculateRepositoryCompatibility(repository, userSkills = []) {
     .join(' ')
     .toLowerCase();
 
-  const skillAliases = {
-    js: ['javascript', 'js'],
-    javascript: ['javascript', 'js', 'node.js', 'nodejs'],
-    ts: ['typescript', 'ts'],
-    typescript: ['typescript', 'ts'],
-    py: ['python', 'py'],
-    python: ['python', 'py'],
-    react: ['react', 'react.js'],
-    'react.js': ['react', 'react.js'],
-    node: ['node', 'node.js', 'nodejs'],
-    'node.js': ['node', 'node.js', 'nodejs'],
-    'c++': ['c++', 'cpp'],
-    cpp: ['cpp', 'c++'],
-    'c#': ['c#', 'csharp'],
-    csharp: ['csharp', 'c#'],
-    go: ['golang', 'go'],
-    golang: ['golang', 'go']
-  };
-
-  const matchedSkills = skills.filter(skill => {
-    const terms = skillAliases[skill] || [skill];
-
-    return terms.some(term => {
-      const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const pattern = new RegExp(
-        `(^|[^a-z0-9+#])${escapedTerm}($|[^a-z0-9+#])`,
-        'i'
-      );
-
-      return pattern.test(repositoryText);
-    });
-  });
+  const matchedSkills = matchSkillsAgainstCorpus(skills, repositoryText);
 
   const score = skills.length === 0
     ? 0
@@ -727,7 +1194,7 @@ async function searchRepositories({
   page = 1,
   perPage = 12,
   userSkills = []
-} = {}, token = null) {
+} = {}, token = null, { fetchImpl = fetch } = {}) {
   const safePage = Math.max(1, Math.min(80, parseInt(page, 10) || 1));
   const safePerPage = Math.max(1, Math.min(50, parseInt(perPage, 10) || 12));
 
@@ -759,175 +1226,229 @@ async function searchRepositories({
 
   const queryString = qParts.join(' ');
 
-  // Include user skills in cache key to prevent mixing personalized results.
-  const cacheKey = `repo_search:${queryString}:${sort}:${order}:${safePage}:${safePerPage}:${skillCacheKey}`;
+  // User-agnostic raw search cache key; user-specific compatibility is recomputed dynamically per caller.
+  const cacheKey = `repo_search:${queryString}:${sort}:${order}:${safePage}:${safePerPage}`;
 
-  // Check cache (5 min TTL)
-  const cached = getCached(cacheKey);
+function computeNormalizedRepoHealth(repo) {
+  return calculateRepositoryHealth({
+    ...repo,
+    pushed_at: repo.pushedAt || repo.pushed_at || null,
+    updated_at: repo.updatedAtExact || repo.updated_at || null,
+    stargazers_count: repo.stars !== undefined ? repo.stars : repo.stargazers_count,
+    forks_count: repo.forks !== undefined ? repo.forks : repo.forks_count,
+    open_issues_count: repo.openIssues !== undefined ? repo.openIssues : repo.open_issues_count,
+    has_issues: repo.hasIssues !== undefined ? repo.hasIssues : repo.has_issues,
+    archived: Boolean(repo.archived),
+    homepage: repo.homepage || ''
+  });
+}
 
-  if (cached) {
-    const cachedRepos = Array.isArray(cached.data?.repositories)
-      ? cached.data.repositories.map(r => {
-          const compatibility = calculateRepositoryCompatibility(
-            r,
-            normalizedUserSkills
-          );
-
-          return {
-            ...r,
-            compatibilityScore: compatibility.score,
-            matchedSkills: compatibility.matchedSkills,
-            totalSkills: compatibility.totalSkills,
-            health: r.health || calculateRepositoryHealth({
-              ...r,
-              updated_at: r.updatedAtExact,
-              stargazers_count: r.stars,
-              forks_count: r.forks,
-              open_issues_count: r.openIssues
-            })
-          };
-        })
-      : [];
-
-    cachedRepos.sort(
-      (a, b) => b.compatibilityScore - a.compatibilityScore
-    );
-
+function personalizeRepoList(rawRepos, skills) {
+  const mapped = (Array.isArray(rawRepos) ? rawRepos : []).map(r => {
+    const compatibility = calculateRepositoryCompatibility(r, skills);
     return {
-      ...cached.data,
-      repositories: cachedRepos,
-      rateLimit: cached.headers?.rateLimit || null,
-      cached: true
-    };
-  }
-
-  let sortParam = '';
-
-  if (['stars', 'forks', 'updated'].includes(sort)) {
-    sortParam = `&sort=${sort}&order=${order === 'asc' ? 'asc' : 'desc'}`;
-  }
-
-  const url = `${GITHUB_API_BASE}/search/repositories?q=${encodeURIComponent(queryString)}${sortParam}&page=${safePage}&per_page=${safePerPage}`;
-
-  const { res, networkError } = await safeGithubFetch(url, token);
-
-  if (networkError || !res) {
-    return {
-      repositories: [],
-      totalCount: 0,
-      page: safePage,
-      perPage: safePerPage,
-      totalPages: 0,
-      rateLimit: null,
-      error: 'NETWORK_ERROR',
-      errorMessage: 'Unable to reach GitHub API. Please check your internet connection and try again.'
-    };
-  }
-
-  const rateLimit = parseRateLimit(res.headers);
-
-  if (res.status === 403) {
-    return {
-      repositories: [],
-      totalCount: 0,
-      page: safePage,
-      perPage: safePerPage,
-      totalPages: 0,
-      rateLimit,
-      error: 'RATE_LIMIT_EXCEEDED',
-      errorMessage: `GitHub API search rate limit reached. Limit resets in ${rateLimit ? rateLimit.resetInMinutes : 1} minute(s).`
-    };
-  }
-
-  if (!res.ok) {
-    return {
-      repositories: [],
-      totalCount: 0,
-      page: safePage,
-      perPage: safePerPage,
-      totalPages: 0,
-      rateLimit,
-      error: `API_ERROR_${res.status}`,
-      errorMessage: `GitHub API returned error HTTP ${res.status}.`
-    };
-  }
-
-  const data = await res.json();
-  const totalCount = data.total_count || 0;
-
-  // GitHub limits search pagination to the top 1,000 results.
-  const totalPages = Math.min(
-    Math.ceil(totalCount / safePerPage),
-    Math.floor(1000 / safePerPage)
-  );
-
-  const repositories = (data.items || []).map(item => {
-    const langKey = (item.language || '').toLowerCase();
-    const langColor = LANGUAGE_COLORS[langKey] || '#818CF8';
-    const health = calculateRepositoryHealth(item);
-
-    const repository = {
-      id: item.id,
-      name: item.name,
-      fullName: item.full_name,
-      owner: {
-        login: item.owner ? item.owner.login : '',
-        avatarUrl: item.owner
-          ? item.owner.avatar_url
-          : 'https://avatars.githubusercontent.com/u/9919?v=4',
-        htmlUrl: item.owner
-          ? item.owner.html_url
-          : `https://github.com/${item.name}`
-      },
-      htmlUrl: item.html_url,
-      description: item.description || 'No description provided.',
-      language: item.language || 'Other',
-      languageColor: langColor,
-      stars: item.stargazers_count || 0,
-      forks: item.forks_count || 0,
-      openIssues: item.open_issues_count || 0,
-      topics: Array.isArray(item.topics) ? item.topics.slice(0, 6) : [],
-      license: item.license
-        ? (item.license.spdx_id || item.license.name)
-        : null,
-      updatedAt: formatRelativeTime(item.updated_at),
-      updatedAtExact: item.updated_at,
-      health
-    };
-
-    const compatibility = calculateRepositoryCompatibility(
-      repository,
-      normalizedUserSkills
-    );
-
-    return {
-      ...repository,
+      ...r,
       compatibilityScore: compatibility.score,
       matchedSkills: compatibility.matchedSkills,
-      totalSkills: compatibility.totalSkills
+      totalSkills: compatibility.totalSkills,
+      health: computeNormalizedRepoHealth(r)
     };
   });
+  mapped.sort((a, b) => b.compatibilityScore - a.compatibilityScore);
+  return mapped;
+}
 
-  // Show repositories with the highest skill compatibility first.
-  repositories.sort(
-    (a, b) => b.compatibilityScore - a.compatibilityScore
-  );
+  // Check cache (10 min TTL)
+  const cached = getCached(cacheKey);
+  if (cached) {
+    return {
+      ...cached.data,
+      repositories: personalizeRepoList(cached.data?.repositories, normalizedUserSkills),
+      rateLimit: cached.headers?.rateLimit || null,
+      cached: true,
+      stale: false,
+      cachedAt: cached.headers?.cachedAt || null
+    };
+  }
 
-  const payload = {
-    repositories,
-    totalCount,
-    page: safePage,
-    perPage: safePerPage,
-    totalPages
-  };
+  return withInFlightDedupe(cacheKey, async () => {
+    const activeBlock = getActiveRateLimitBlock('search', token);
+    if (activeBlock) {
+      const stale = getCached(cacheKey, { allowStale: true });
+      return {
+        ...(stale ? stale.data : { totalCount: 0, page: safePage, perPage: safePerPage, totalPages: 0 }),
+        repositories: stale ? personalizeRepoList(stale.data?.repositories, normalizedUserSkills) : [],
+        rateLimit: {
+          limit: activeBlock.limit,
+          remaining: activeBlock.remaining,
+          resetEpoch: activeBlock.resetEpoch,
+          resetAtIso: activeBlock.resetAtIso,
+          resetInMinutes: activeBlock.resetInMinutes,
+          resource: 'search',
+          rateLimitType: activeBlock.rateLimitType,
+          isExhausted: true
+        },
+        cached: Boolean(stale),
+        stale: Boolean(stale),
+        rateLimited: true,
+        rateLimitType: activeBlock.rateLimitType,
+        error: 'RATE_LIMIT_EXCEEDED',
+        errorMessage: stale ? `${activeBlock.message} Showing preserved cached repositories.` : activeBlock.message
+      };
+    }
 
-  setCache(cacheKey, payload, { rateLimit }, 300);
+    let sortParam = '';
+    if (['stars', 'forks', 'updated'].includes(sort)) {
+      sortParam = `&sort=${sort}&order=${order === 'asc' ? 'asc' : 'desc'}`;
+    }
 
-  return {
-    ...payload,
-    rateLimit,
-    cached: false
-  };
+    const url = `${GITHUB_API_BASE}/search/repositories?q=${encodeURIComponent(queryString)}${sortParam}&page=${safePage}&per_page=${safePerPage}`;
+    const { res, networkError } = await safeGithubFetch(url, token, fetchImpl);
+
+    if (networkError || !res) {
+      const stale = getCached(cacheKey, { allowStale: true });
+      if (stale) {
+        return {
+          ...stale.data,
+          repositories: personalizeRepoList(stale.data?.repositories, normalizedUserSkills),
+          rateLimit: stale.headers?.rateLimit || null,
+          cached: true,
+          stale: true,
+          error: 'NETWORK_ERROR',
+          errorMessage: 'Unable to reach GitHub API. Showing preserved cached repositories.'
+        };
+      }
+      return {
+        repositories: [],
+        totalCount: 0,
+        page: safePage,
+        perPage: safePerPage,
+        totalPages: 0,
+        rateLimit: null,
+        error: 'NETWORK_ERROR',
+        errorMessage: 'Unable to reach GitHub API. Please check your internet connection and try again.'
+      };
+    }
+
+    const rateLimit = parseRateLimit(res.headers);
+
+    if (res.status === 403 || res.status === 429) {
+      let errBody = null;
+      try { errBody = await res.json(); } catch (e) {}
+      const rlClass = classifyRateLimitResponse(res.status, rateLimit, errBody);
+      if (rlClass.isRateLimited) {
+        recordRateLimitBlock('search', token, rlClass, rateLimit);
+      }
+      const stale = getCached(cacheKey, { allowStale: true });
+      const rlMsg = rlClass.message || `GitHub API search rate limit reached. Limit resets in ${rateLimit?.resetInMinutes ?? 1} minute(s).`;
+      return {
+        ...(stale ? stale.data : { totalCount: 0, page: safePage, perPage: safePerPage, totalPages: 0 }),
+        repositories: stale ? personalizeRepoList(stale.data?.repositories, normalizedUserSkills) : [],
+        rateLimit: rateLimit ? { ...rateLimit, resetEpoch: rlClass.resetEpoch || rateLimit.resetEpoch, resetAtIso: rlClass.resetAtIso || rateLimit.resetAtIso, rateLimitType: rlClass.rateLimitType } : null,
+        cached: Boolean(stale),
+        stale: Boolean(stale),
+        rateLimited: true,
+        rateLimitType: rlClass.rateLimitType || 'primary',
+        error: 'RATE_LIMIT_EXCEEDED',
+        errorMessage: stale ? `${rlMsg} Showing preserved cached repositories.` : rlMsg
+      };
+    }
+
+    if (!res.ok) {
+      const stale = getCached(cacheKey, { allowStale: true });
+      if (stale) {
+        return {
+          ...stale.data,
+          repositories: personalizeRepoList(stale.data?.repositories, normalizedUserSkills),
+          rateLimit,
+          cached: true,
+          stale: true,
+          error: `API_ERROR_${res.status}`,
+          errorMessage: `GitHub API returned HTTP ${res.status}. Showing preserved cached repositories.`
+        };
+      }
+      return {
+        repositories: [],
+        totalCount: 0,
+        page: safePage,
+        perPage: safePerPage,
+        totalPages: 0,
+        rateLimit,
+        error: `API_ERROR_${res.status}`,
+        errorMessage: `GitHub API returned error HTTP ${res.status}.`
+      };
+    }
+
+    const data = await res.json();
+    const totalCount = data.total_count || 0;
+
+    // GitHub limits search pagination to the top 1,000 results.
+    const totalPages = Math.min(
+      Math.ceil(totalCount / safePerPage),
+      Math.floor(1000 / safePerPage)
+    );
+
+    const baseRepositories = (data.items || []).map(item => {
+      const langKey = (item.language || '').toLowerCase();
+      const langColor = LANGUAGE_COLORS[langKey] || '#818CF8';
+
+      const repository = {
+        id: item.id,
+        name: item.name,
+        fullName: item.full_name,
+        owner: {
+          login: item.owner ? item.owner.login : '',
+          avatarUrl: item.owner
+            ? item.owner.avatar_url
+            : 'https://avatars.githubusercontent.com/u/9919?v=4',
+          htmlUrl: item.owner
+            ? item.owner.html_url
+            : `https://github.com/${item.name}`
+        },
+        htmlUrl: item.html_url,
+        description: item.description || 'No description provided.',
+        language: item.language || 'Other',
+        languageColor: langColor,
+        stars: item.stargazers_count || 0,
+        forks: item.forks_count || 0,
+        openIssues: item.open_issues_count || 0,
+        topics: Array.isArray(item.topics) ? item.topics.slice(0, 6) : [],
+        license: item.license
+          ? (item.license.spdx_id || item.license.name)
+          : null,
+        homepage: item.homepage || '',
+        archived: Boolean(item.archived),
+        hasIssues: item.has_issues !== undefined ? Boolean(item.has_issues) : true,
+        pushedAt: item.pushed_at || null,
+        updatedAt: formatRelativeTime(item.updated_at),
+        updatedAtExact: item.updated_at || null,
+        health: null
+      };
+      repository.health = computeNormalizedRepoHealth(repository);
+      return repository;
+    });
+
+    const basePayload = {
+      repositories: baseRepositories,
+      totalCount,
+      page: safePage,
+      perPage: safePerPage,
+      totalPages
+    };
+
+    setCache(cacheKey, basePayload, { rateLimit }, 600);
+
+    return {
+      ...basePayload,
+      repositories: personalizeRepoList(baseRepositories, normalizedUserSkills),
+      rateLimit,
+      cached: false,
+      stale: false
+    };
+  }).then(result => ({
+    ...result,
+    repositories: personalizeRepoList(result.repositories, normalizedUserSkills)
+  }));
 }
 // ----------------------------------------------------
 // 6. Contributor Leaderboard Synchronization
@@ -1083,10 +1604,16 @@ module.exports = {
   searchIssues,
   searchRepositories,
   parseRateLimit,
+  classifyRateLimitResponse,
+  getActiveRateLimitBlock,
+  recordRateLimitBlock,
+  safeGithubFetch,
   LANGUAGE_COLORS,
   syncContributorFromGitHub,
   seedInitialContributors,
   calculateRepositoryHealth,
   calculateContributionReadiness,
-  evaluateIssueReadiness
+  evaluateIssueReadiness,
+  calculateCompatibility,
+  calculateRepositoryCompatibility
 };

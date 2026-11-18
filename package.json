@@ -7,7 +7,9 @@
     "start": "node app.js",
     "dev": "node --watch app.js",
     "test": "node scripts/run_all_tests.js",
-    "test:modules": "node scripts/test_saanvi_modules.js"
+    "test:modules": "node scripts/test_saanvi_modules.js",
+    "test:sync": "node scripts/test_github_sync.js",
+    "test:ratelimit": "node scripts/test_rate_limit_sync.js"
   },
   "author": "mknasiruddin",
   "license": "ISC",

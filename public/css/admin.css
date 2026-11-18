@@ -71,9 +71,9 @@
   font-weight: 600;
 }
 .diag-pill.live {
-  background: rgba(99, 102, 241, 0.16);
+  background: rgba(59, 130, 246, 0.16);
   color: var(--accent-text);
-  border: 1px solid rgba(124, 58, 237, 0.4);
+  border: 1px solid rgba(59, 130, 246, 0.4);
 }
 .diag-pill.mock {
   background: rgba(245, 158, 11, 0.15);
@@ -172,9 +172,9 @@
 }
 .status-badge.active,
 .status-badge.healthy {
-  background: rgba(99, 102, 241, 0.16);
+  background: rgba(59, 130, 246, 0.16);
   color: var(--accent-text);
-  border: 1px solid rgba(124, 58, 237, 0.4);
+  border: 1px solid rgba(59, 130, 246, 0.4);
 }
 .status-badge.pending {
   background: rgba(245, 158, 11, 0.15);
@@ -247,7 +247,7 @@
 }
 .auth-input-group input:focus {
   border-color: var(--border-accent);
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.25);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
 }
 .auth-input-group input::placeholder {
   color: var(--muted);

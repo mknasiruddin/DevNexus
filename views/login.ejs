@@ -14,10 +14,12 @@
   <style>
     .auth-card {
       background: var(--surface);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
       border: 1px solid var(--border);
       border-radius: 16px;
       padding: 36px 32px;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+      box-shadow: var(--shadow);
       position: relative;
     }
     .auth-tab-bar {
@@ -102,6 +104,130 @@
       font-size: 11.5px;
       color: var(--muted);
     }
+    .auth-field input.input-invalid {
+      border-color: rgba(248, 113, 113, 0.85);
+      box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.16);
+    }
+    .auth-field input.input-valid {
+      border-color: rgba(74, 222, 128, 0.55);
+    }
+    .field-error {
+      display: none;
+      font-size: 12px;
+      color: #f87171;
+      line-height: 1.35;
+    }
+    .field-error.visible {
+      display: block;
+    }
+    .field-match-ok {
+      display: none;
+      font-size: 12px;
+      color: #4ade80;
+    }
+    .field-match-ok.visible {
+      display: block;
+    }
+    .password-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .password-wrap input {
+      padding-right: 44px;
+    }
+    .pw-toggle {
+      position: absolute;
+      right: 10px;
+      background: none;
+      border: none;
+      padding: 4px 6px;
+      color: var(--muted);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+    }
+    .pw-toggle:hover {
+      color: var(--text);
+      background: var(--surface-2);
+    }
+    .pw-strength-wrap {
+      display: grid;
+      gap: 6px;
+      margin-top: 2px;
+    }
+    .pw-strength-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11.5px;
+      color: var(--muted);
+    }
+    .pw-strength-label {
+      font-weight: 600;
+    }
+    .pw-strength-bars {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 5px;
+    }
+    .pw-strength-bar {
+      height: 4px;
+      border-radius: 999px;
+      background: var(--border);
+      transition: background .2s ease;
+    }
+    .pw-rules {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 10px;
+      list-style: none;
+      margin: 2px 0 0;
+      padding: 0;
+      font-size: 11.5px;
+      color: var(--muted);
+    }
+    .pw-rules li {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .pw-rules li.met {
+      color: #4ade80;
+    }
+    .auth-submit-btn {
+      width: 100%;
+      height: 42px;
+      margin-top: 6px;
+      font-size: 14.5px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .auth-submit-btn:disabled {
+      opacity: 0.72;
+      cursor: not-allowed;
+      transform: none;
+      filter: none;
+    }
+    .btn-spinner {
+      width: 15px;
+      height: 15px;
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: authSpin .7s linear infinite;
+      display: none;
+    }
+    .auth-submit-btn.is-loading .btn-spinner {
+      display: inline-block;
+    }
+    @keyframes authSpin {
+      to { transform: rotate(360deg); }
+    }
     .oauth-btn-wrap {
       margin-bottom: 16px;
     }
@@ -177,6 +303,24 @@
       border: 1px solid rgba(34, 197, 94, 0.35);
       color: #4ade80;
     }
+    .alert-info {
+      background: rgba(99, 102, 241, 0.14);
+      border: 1px solid rgba(99, 102, 241, 0.42);
+      color: var(--text);
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .alert-info-head {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      font-weight: 600;
+      color: #a5b4fc;
+    }
+    [data-theme="light"] .alert-info-head {
+      color: #4338ca;
+    }
     .legal-footer {
       display: flex;
       justify-content: center;
@@ -235,18 +379,35 @@
           </a>
         </nav>
 
+        <% const formVals = locals.formValues || {}; %>
         <!-- Error & Success Banners -->
-        <% if (locals.error) { %>
-          <div class="alert-banner alert-error" role="alert">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            <span><%= error %></span>
-          </div>
-        <% } %>
+        <div id="auth-status-banner"
+             class="alert-banner <%= locals.error ? 'alert-error' : (locals.success ? 'alert-success' : '') %>"
+             role="<%= locals.error ? 'alert' : 'status' %>"
+             aria-live="polite"
+             style="<%= (locals.error || locals.success) ? '' : 'display: none;' %>">
+          <svg id="auth-status-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;">
+            <% if (locals.error) { %>
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            <% } else { %>
+              <path d="M20 6L9 17l-5-5"/>
+            <% } %>
+          </svg>
+          <span id="auth-status-text"><%= locals.error || locals.success || '' %></span>
+        </div>
 
-        <% if (locals.success) { %>
-          <div class="alert-banner alert-success" role="status">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
-            <span><%= success %></span>
+        <% if (locals.oauthOnly && !locals.error) { %>
+          <div id="oauth-guidance-banner" class="alert-banner alert-info" role="status" aria-live="polite">
+            <div class="alert-info-head">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+              <span>GitHub Account Recognized</span>
+            </div>
+            <p style="margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--muted);">
+              This account signs in through GitHub OAuth &mdash; no separate DevNexus password is required.
+            </p>
+            <a href="/auth/github" class="btn btn-sm btn-primary" style="text-decoration: none;">
+              Continue with GitHub &rarr;
+            </a>
           </div>
         <% } %>
 
@@ -257,7 +418,7 @@
             <span><%= currentMode === 'signup' ? 'Sign up with GitHub' : 'Continue with GitHub' %></span>
           </a>
           <p class="oauth-subtext">
-            Secure authentication powered by GitHub OAuth.
+            Secure one-click sign in via GitHub OAuth &mdash; no DevNexus password required for GitHub accounts.
           </p>
         </div>
 
@@ -267,30 +428,65 @@
 
         <% if (currentMode === 'signup') { %>
           <!-- =================== SIGN UP FORM =================== -->
-          <form action="/auth/signup" method="POST">
+          <form id="signup-form" action="/auth/signup" method="POST" novalidate>
             <div class="auth-field">
               <label for="reg-username">Username</label>
-              <input type="text" id="reg-username" name="username" placeholder="your-github-username" autocomplete="username" minlength="3" maxlength="39" pattern="[a-zA-Z0-9_-]{3,39}" title="3 to 39 alphanumeric characters, hyphens, or underscores" required>
+              <input type="text" id="reg-username" name="username" value="<%= formVals.username || '' %>" placeholder="your-github-username" autocomplete="username" minlength="3" maxlength="39" pattern="[a-zA-Z0-9_-]{3,39}" title="3 to 39 alphanumeric characters, hyphens, or underscores" aria-describedby="err-username" required>
               <span class="field-hint">3–39 alphanumeric characters, hyphens and underscores allowed</span>
+              <span class="field-error" id="err-username" role="alert"></span>
             </div>
 
             <div class="auth-field">
               <label for="reg-email">Work or Personal Email</label>
-              <input type="email" id="reg-email" name="email" placeholder="name@company.com" autocomplete="email" required>
+              <input type="email" id="reg-email" name="email" value="<%= formVals.email || '' %>" placeholder="name@company.com" autocomplete="email" maxlength="254" aria-describedby="err-email" required>
+              <span class="field-error" id="err-email" role="alert"></span>
             </div>
 
             <div class="auth-field">
               <label for="reg-password">Password</label>
-              <input type="password" id="reg-password" name="password" placeholder="Enter your password (min. 6 characters)" autocomplete="new-password" required minlength="6">
+              <div class="password-wrap">
+                <input type="password" id="reg-password" name="password" placeholder="Enter your password (min. 8 characters)" autocomplete="new-password" required minlength="8" maxlength="128" aria-describedby="err-password">
+                <button type="button" class="pw-toggle" data-target="reg-password" aria-label="Show password" title="Show/hide password">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <div class="pw-strength-wrap" id="pw-strength-wrap">
+                <div class="pw-strength-head">
+                  <span>Password strength</span>
+                  <span class="pw-strength-label" id="pw-strength-label">Enter password</span>
+                </div>
+                <div class="pw-strength-bars" aria-hidden="true">
+                  <span class="pw-strength-bar" data-seg="1"></span>
+                  <span class="pw-strength-bar" data-seg="2"></span>
+                  <span class="pw-strength-bar" data-seg="3"></span>
+                  <span class="pw-strength-bar" data-seg="4"></span>
+                </div>
+                <ul class="pw-rules" id="pw-rules">
+                  <li data-rule="length">&#9675; 8+ chars</li>
+                  <li data-rule="upper">&#9675; Uppercase</li>
+                  <li data-rule="lower">&#9675; Lowercase</li>
+                  <li data-rule="number">&#9675; Number</li>
+                  <li data-rule="special">&#9675; Special char</li>
+                </ul>
+              </div>
+              <span class="field-error" id="err-password" role="alert"></span>
             </div>
 
             <div class="auth-field">
               <label for="reg-confirm">Confirm Password</label>
-              <input type="password" id="reg-confirm" name="confirmPassword" placeholder="Confirm your password" autocomplete="new-password" required minlength="6">
+              <div class="password-wrap">
+                <input type="password" id="reg-confirm" name="confirmPassword" placeholder="Confirm your password" autocomplete="new-password" required minlength="8" maxlength="128" aria-describedby="err-confirm">
+                <button type="button" class="pw-toggle" data-target="reg-confirm" aria-label="Show confirm password" title="Show/hide password">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <span class="field-match-ok" id="confirm-match-ok">Passwords match</span>
+              <span class="field-error" id="err-confirm" role="alert"></span>
             </div>
 
-            <button type="submit" class="btn btn-primary" style="width: 100%; height: 42px; margin-top: 6px; font-size: 14.5px;">
-              Create Developer Account &rarr;
+            <button type="submit" id="signup-submit-btn" class="btn btn-primary auth-submit-btn">
+              <span class="btn-spinner" aria-hidden="true"></span>
+              <span class="btn-label">Create Developer Account &rarr;</span>
             </button>
           </form>
         <% } else { %>
@@ -306,10 +502,10 @@
             </form>
           </div>
 
-          <form action="/auth/login" method="POST">
+          <form id="login-form" action="/auth/login" method="POST">
             <div class="auth-field">
               <label for="login-username">Username or Email</label>
-              <input type="text" id="login-username" name="username" placeholder="your-github-username or name@company.com" autocomplete="username" required>
+              <input type="text" id="login-username" name="username" value="<%= formVals.username || '' %>" placeholder="your-github-username or name@company.com" autocomplete="username" required>
             </div>
 
             <div class="auth-field">
@@ -317,11 +513,17 @@
                 <label for="login-password">Password</label>
                 <a href="#forgot" onclick="toggleForgot(event)" style="font-size: 12px; color: var(--link); text-decoration: none;">Password assistance?</a>
               </div>
-              <input type="password" id="login-password" name="password" placeholder="Enter your password" autocomplete="current-password" required>
+              <div class="password-wrap">
+                <input type="password" id="login-password" name="password" placeholder="Enter your password" autocomplete="current-password" required>
+                <button type="button" class="pw-toggle" data-target="login-password" aria-label="Show password" title="Show/hide password">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
             </div>
 
-            <button type="submit" class="btn btn-primary" style="width: 100%; height: 42px; margin-top: 6px; font-size: 14.5px;">
-              Sign In to DevNexus &rarr;
+            <button type="submit" id="login-submit-btn" class="btn btn-primary auth-submit-btn">
+              <span class="btn-spinner" aria-hidden="true"></span>
+              <span class="btn-label">Sign In to DevNexus &rarr;</span>
             </button>
           </form>
 
@@ -372,6 +574,342 @@
         box.style.display = box.style.display === 'block' ? 'none' : 'block';
       }
     }
+
+    (function () {
+      'use strict';
+
+      // Password show/hide toggle buttons
+      document.querySelectorAll('.pw-toggle').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var target = document.getElementById(btn.getAttribute('data-target'));
+          if (!target) return;
+          var show = target.type === 'password';
+          target.type = show ? 'text' : 'password';
+          btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+        });
+      });
+
+      // Prevent duplicate submission on Sign In form and reset on bfcache restore
+      var loginForm = document.getElementById('login-form');
+      var loginBtn = document.getElementById('login-submit-btn');
+      if (loginForm && loginBtn) {
+        var loginSubmitting = false;
+        window.addEventListener('pageshow', function () {
+          loginSubmitting = false;
+          loginBtn.disabled = false;
+          loginBtn.classList.remove('is-loading');
+          loginBtn.removeAttribute('aria-busy');
+          var lbl = loginBtn.querySelector('.btn-label');
+          if (lbl) lbl.innerHTML = 'Sign In to DevNexus &rarr;';
+        });
+        loginForm.addEventListener('submit', function (e) {
+          if (loginSubmitting) {
+            e.preventDefault();
+            return;
+          }
+          var uInput = document.getElementById('login-username');
+          var pInput = document.getElementById('login-password');
+          if (uInput) uInput.value = uInput.value.trim();
+          if ((uInput && !uInput.value) || (pInput && !pInput.value)) {
+            return;
+          }
+          loginSubmitting = true;
+          loginBtn.disabled = true;
+          loginBtn.classList.add('is-loading');
+          loginBtn.setAttribute('aria-busy', 'true');
+          var lbl = loginBtn.querySelector('.btn-label');
+          if (lbl) lbl.textContent = 'Signing In...';
+        });
+      }
+
+      // Sign Up form validation, strength check, duplicate-submit guard & fetch integration
+      var signupForm = document.getElementById('signup-form');
+      if (!signupForm) return;
+
+      var usernameInput = document.getElementById('reg-username');
+      var emailInput = document.getElementById('reg-email');
+      var passwordInput = document.getElementById('reg-password');
+      var confirmInput = document.getElementById('reg-confirm');
+      var submitBtn = document.getElementById('signup-submit-btn');
+      var submitLabel = submitBtn.querySelector('.btn-label');
+      var banner = document.getElementById('auth-status-banner');
+      var bannerIcon = document.getElementById('auth-status-icon');
+      var bannerText = document.getElementById('auth-status-text');
+      var matchOkEl = document.getElementById('confirm-match-ok');
+
+      var errEls = {
+        username: document.getElementById('err-username'),
+        email: document.getElementById('err-email'),
+        password: document.getElementById('err-password'),
+        confirmPassword: document.getElementById('err-confirm')
+      };
+      var inputMap = {
+        username: usernameInput,
+        email: emailInput,
+        password: passwordInput,
+        confirmPassword: confirmInput
+      };
+
+      var isSubmitting = false;
+      var hasSucceeded = false;
+      var touched = { username: false, email: false, password: false, confirmPassword: false };
+
+      function showBanner(type, message) {
+        if (!banner || !bannerText) return;
+        banner.style.display = 'flex';
+        banner.className = 'alert-banner ' + (type === 'success' ? 'alert-success' : 'alert-error');
+        banner.setAttribute('role', type === 'success' ? 'status' : 'alert');
+        if (bannerIcon) {
+          bannerIcon.innerHTML = type === 'success'
+            ? '<path d="M20 6L9 17l-5-5"/>'
+            : '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>';
+        }
+        bannerText.textContent = message;
+      }
+
+      function hideBanner() {
+        if (banner) banner.style.display = 'none';
+      }
+
+      function setFieldError(field, message) {
+        var input = inputMap[field];
+        var errEl = errEls[field];
+        if (input) {
+          if (message) {
+            input.classList.add('input-invalid');
+            input.classList.remove('input-valid');
+            input.setAttribute('aria-invalid', 'true');
+          } else {
+            input.classList.remove('input-invalid');
+            input.removeAttribute('aria-invalid');
+          }
+        }
+        if (errEl) {
+          errEl.textContent = message || '';
+          errEl.classList.toggle('visible', Boolean(message));
+        }
+      }
+
+      function evaluatePasswordRules(pw) {
+        return {
+          length: pw.length >= 8 && pw.length <= 128,
+          upper: /[A-Z]/.test(pw),
+          lower: /[a-z]/.test(pw),
+          number: /[0-9]/.test(pw),
+          special: /[^a-zA-Z0-9\s]/.test(pw)
+        };
+      }
+
+      function updateStrengthUI(pw) {
+        var rules = evaluatePasswordRules(pw);
+        var metCount = 0;
+        Object.keys(rules).forEach(function (key) {
+          if (rules[key]) metCount += 1;
+          var li = document.querySelector('#pw-rules li[data-rule="' + key + '"]');
+          if (li) {
+            li.classList.toggle('met', rules[key]);
+            var labelText = li.textContent.replace(/^[\u2713\u25CB]\s*/, '');
+            li.textContent = (rules[key] ? '\u2713 ' : '\u25CB ') + labelText;
+          }
+        });
+
+        var level = 0;
+        var text = 'Enter password';
+        var color = 'var(--border)';
+        if (pw.length > 0) {
+          if (metCount <= 2) {
+            level = 1; text = 'Weak'; color = '#f87171';
+          } else if (metCount === 3) {
+            level = 2; text = 'Fair'; color = '#fbbf24';
+          } else if (metCount === 4) {
+            level = 3; text = 'Good'; color = '#60a5fa';
+          } else {
+            level = 4; text = 'Strong'; color = '#4ade80';
+          }
+        }
+
+        var labelEl = document.getElementById('pw-strength-label');
+        if (labelEl) {
+          labelEl.textContent = text;
+          labelEl.style.color = pw.length > 0 ? color : 'var(--muted)';
+        }
+        document.querySelectorAll('.pw-strength-bar').forEach(function (bar, idx) {
+          bar.style.background = idx < level ? color : 'var(--border)';
+        });
+        return rules;
+      }
+
+      function validateUsername() {
+        var val = usernameInput.value.trim();
+        if (!val) return 'Username is required.';
+        if (val.length < 3 || val.length > 39) return 'Username must be between 3 and 39 characters long.';
+        if (!/^[a-zA-Z0-9_-]+$/.test(val)) return 'Username may only contain letters, numbers, hyphens, and underscores.';
+        return '';
+      }
+
+      function validateEmail() {
+        var val = emailInput.value.trim();
+        if (!val) return 'Email address is required.';
+        if (val.length > 254 || val.indexOf('..') !== -1 || !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(val)) {
+          return 'Please provide a valid email address.';
+        }
+        return '';
+      }
+
+      function validatePassword() {
+        var val = passwordInput.value;
+        if (!val) return 'Password is required.';
+        if (val.length < 8) return 'Password must be at least 8 characters long.';
+        if (val.length > 128) return 'Password must not exceed 128 characters.';
+        var rules = evaluatePasswordRules(val);
+        if (!rules.upper || !rules.lower || !rules.number || !rules.special) {
+          return 'Password must include uppercase, lowercase, a number, and a special character.';
+        }
+        return '';
+      }
+
+      function validateConfirm() {
+        var pw = passwordInput.value;
+        var cf = confirmInput.value;
+        if (!cf) {
+          if (matchOkEl) matchOkEl.classList.remove('visible');
+          return 'Please confirm your password.';
+        }
+        if (pw !== cf) {
+          if (matchOkEl) matchOkEl.classList.remove('visible');
+          return 'Passwords do not match.';
+        }
+        if (matchOkEl) matchOkEl.classList.add('visible');
+        return '';
+      }
+
+      function validateField(field, force) {
+        if (!force && !touched[field]) return '';
+        var err = '';
+        if (field === 'username') err = validateUsername();
+        if (field === 'email') err = validateEmail();
+        if (field === 'password') err = validatePassword();
+        if (field === 'confirmPassword') err = validateConfirm();
+        setFieldError(field, err);
+        if (!err && inputMap[field] && inputMap[field].value.trim()) {
+          inputMap[field].classList.add('input-valid');
+        }
+        return err;
+      }
+
+      usernameInput.addEventListener('blur', function () { touched.username = true; validateField('username', true); });
+      usernameInput.addEventListener('input', function () { if (touched.username) validateField('username', true); });
+
+      emailInput.addEventListener('blur', function () { touched.email = true; validateField('email', true); });
+      emailInput.addEventListener('input', function () { if (touched.email) validateField('email', true); });
+
+      passwordInput.addEventListener('input', function () {
+        updateStrengthUI(passwordInput.value);
+        if (touched.password) validateField('password', true);
+        if (touched.confirmPassword || confirmInput.value.length > 0) validateField('confirmPassword', true);
+      });
+      passwordInput.addEventListener('blur', function () { touched.password = true; validateField('password', true); });
+
+      confirmInput.addEventListener('input', function () {
+        touched.confirmPassword = true;
+        validateField('confirmPassword', true);
+      });
+      confirmInput.addEventListener('blur', function () { touched.confirmPassword = true; validateField('confirmPassword', true); });
+
+      function setLoadingState(loading) {
+        isSubmitting = loading;
+        submitBtn.disabled = loading || hasSucceeded;
+        submitBtn.classList.toggle('is-loading', loading);
+        submitBtn.setAttribute('aria-busy', String(loading));
+        if (submitLabel) {
+          if (loading) {
+            submitLabel.textContent = 'Creating Account...';
+          } else if (hasSucceeded) {
+            submitLabel.textContent = 'Account Created \u2713 Redirecting...';
+          } else {
+            submitLabel.innerHTML = 'Create Developer Account &rarr;';
+          }
+        }
+      }
+
+      signupForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        if (isSubmitting || hasSucceeded) return;
+
+        touched.username = true;
+        touched.email = true;
+        touched.password = true;
+        touched.confirmPassword = true;
+
+        var errors = {
+          username: validateField('username', true),
+          email: validateField('email', true),
+          password: validateField('password', true),
+          confirmPassword: validateField('confirmPassword', true)
+        };
+
+        var firstInvalidField = ['username', 'email', 'password', 'confirmPassword'].find(function (k) {
+          return Boolean(errors[k]);
+        });
+
+        if (firstInvalidField) {
+          showBanner('error', errors[firstInvalidField]);
+          if (inputMap[firstInvalidField]) inputMap[firstInvalidField].focus();
+          return;
+        }
+
+        hideBanner();
+        setLoadingState(true);
+
+        try {
+          var response = await fetch('/auth/signup', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+              username: usernameInput.value.trim(),
+              email: emailInput.value.trim(),
+              password: passwordInput.value,
+              confirmPassword: confirmInput.value
+            })
+          });
+
+          var contentType = response.headers.get('content-type') || '';
+          var data = contentType.indexOf('application/json') !== -1
+            ? await response.json()
+            : { success: response.ok, message: response.ok ? 'Account created! Redirecting...' : 'Registration failed. Please try again.' };
+
+          if (response.ok && data.success) {
+            hasSucceeded = true;
+            setLoadingState(false);
+            showBanner('success', data.message || 'Account created successfully! Redirecting to developer onboarding...');
+            setTimeout(function () {
+              window.location.assign(data.redirectUrl || '/onboarding');
+            }, 350);
+            return;
+          }
+
+          if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+            Object.keys(data.fieldErrors).forEach(function (field) {
+              setFieldError(field, data.fieldErrors[field]);
+            });
+          }
+          showBanner('error', data.message || 'Unable to complete registration. Please check your details.');
+          setLoadingState(false);
+
+          var firstServerField = data.fieldErrors ? Object.keys(data.fieldErrors)[0] : null;
+          if (firstServerField && inputMap[firstServerField]) {
+            inputMap[firstServerField].focus();
+          }
+        } catch (err) {
+          showBanner('error', 'Network or server error while creating your account. Please try again.');
+          setLoadingState(false);
+        }
+      });
+    })();
   </script>
 </body>
 </html>

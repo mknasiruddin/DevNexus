@@ -35,49 +35,56 @@
       document.documentElement.setAttribute('data-theme', t);
     })();
   </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
   <link rel="stylesheet" href="/css/sparkles.css">
+  <link rel="stylesheet" href="/css/landing-wow-bg.css">
   <style>
     :root {
-      --bg: #080B1A;
-      --surface: #10152B;
-      --surface-2: #17143A;
-      --border: rgba(99, 102, 241, 0.22);
-      --border-accent: rgba(124, 58, 237, 0.45);
-      --text: #F1F5F9;
-      --muted: #94A3B8;
-      --accent: linear-gradient(135deg, #4338CA 0%, #7C3AED 50%, #6366F1 100%);
+      --bg: #050814;
+      --surface: rgba(12, 17, 38, 0.82);
+      --surface-2: rgba(18, 24, 52, 0.88);
+      --border: rgba(129, 140, 248, 0.18);
+      --border-accent: rgba(139, 92, 246, 0.42);
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --cyan: #22d3ee;
+      --accent: linear-gradient(135deg, #4338CA 0%, #6D28D9 50%, #6366F1 100%);
       --accent-solid: #6366F1;
-      --accent-hover: linear-gradient(135deg, #4F46E5 0%, #8B5CF6 50%, #818CF8 100%);
-      --accent-text: #A78BFA;
-      --link: #818CF8;
-      --link-hover: #A5B4FC;
-      --shadow: 0 12px 32px rgba(8, 11, 26, 0.8), 0 0 24px rgba(124, 58, 237, 0.12);
-      --btn-glow: 0 0 20px rgba(124, 58, 237, 0.45), 0 4px 14px rgba(67, 56, 202, 0.35);
-      --btn-glow-hover: 0 0 28px rgba(124, 58, 237, 0.65), 0 6px 18px rgba(99, 102, 241, 0.4);
-      --l0: #10152B; --l1: #1e1b4b; --l2: #3730a3; --l3: #6366f1; --l4: #a78bfa;
-      --cell-edge: rgba(99, 102, 241, 0.15);
-      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
-      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      --accent-hover: linear-gradient(135deg, #4F46E5 0%, #7C3AED 50%, #818CF8 100%);
+      --accent-text: #a78bfa;
+      --link: #818cf8;
+      --link-hover: #a5b4fc;
+      --shadow: 0 12px 34px rgba(3, 6, 18, 0.72), inset 0 1px 0 rgba(255, 255, 255, 0.045);
+      --btn-glow: 0 4px 16px rgba(79, 70, 229, 0.32), 0 0 18px rgba(124, 58, 237, 0.25);
+      --btn-glow-hover: 0 6px 22px rgba(99, 102, 241, 0.42), 0 0 24px rgba(124, 58, 237, 0.42);
+      --l0: #0c1126; --l1: #1e1b4b; --l2: #3730a3; --l3: #6366f1; --l4: #a78bfa;
+      --cell-edge: rgba(129, 140, 248, 0.14);
+      --font-display: 'Space Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
     [data-theme="light"] {
-      --bg: #ffffff;
-      --surface: #ffffff;
-      --surface-2: #f5f3ff;
-      --border: rgba(196, 181, 253, 0.5);
-      --border-accent: rgba(124, 58, 237, 0.4);
-      --text: #1e1b4b;
+      --bg: #f8faff;
+      --surface: rgba(255, 255, 255, 0.88);
+      --surface-2: rgba(245, 243, 255, 0.92);
+      --border: rgba(99, 102, 241, 0.2);
+      --border-accent: rgba(124, 58, 237, 0.38);
+      --text: #0f172a;
       --muted: #64748b;
-      --accent: linear-gradient(135deg, #4338CA 0%, #7C3AED 50%, #6366F1 100%);
+      --cyan: #0891b2;
+      --accent: linear-gradient(135deg, #4338CA 0%, #6D28D9 50%, #6366F1 100%);
       --accent-solid: #6366F1;
-      --accent-hover: linear-gradient(135deg, #4F46E5 0%, #8B5CF6 50%, #818CF8 100%);
+      --accent-hover: linear-gradient(135deg, #4F46E5 0%, #7C3AED 50%, #818CF8 100%);
       --accent-text: #6366f1;
       --link: #4f46e5;
       --link-hover: #4338ca;
-      --shadow: 0 12px 32px rgba(99, 102, 241, 0.08), 0 2px 8px rgba(124, 58, 237, 0.05);
-      --btn-glow: 0 0 16px rgba(124, 58, 237, 0.35), 0 4px 12px rgba(67, 56, 202, 0.25);
-      --btn-glow-hover: 0 0 24px rgba(124, 58, 237, 0.5), 0 6px 16px rgba(99, 102, 241, 0.35);
+      --shadow: 0 10px 28px rgba(15, 23, 42, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+      --btn-glow: 0 4px 14px rgba(79, 70, 229, 0.24), 0 0 14px rgba(124, 58, 237, 0.2);
+      --btn-glow-hover: 0 6px 20px rgba(99, 102, 241, 0.32), 0 0 20px rgba(124, 58, 237, 0.32);
       --l0: #f1f5f9; --l1: #e0e7ff; --l2: #c7d2fe; --l3: #818cf8; --l4: #4f46e5;
-      --cell-edge: rgba(196, 181, 253, 0.4);
+      --cell-edge: rgba(99, 102, 241, 0.25);
     }
 
     *, *::before, *::after { box-sizing: border-box; }
@@ -87,6 +94,7 @@
       font-family: var(--font); font-size: 16px; line-height: 1.5;
       -webkit-font-smoothing: antialiased;
       transition: background .25s, color .25s;
+      overflow-x: clip;
     }
     a { color: inherit; text-decoration: none; }
     button { font: inherit; color: inherit; cursor: pointer; }
@@ -207,15 +215,22 @@
     .mobile-panel .m-actions .btn { flex: 1; }
 
     /* ---------- Hero ---------- */
-    .hero { padding: 72px 0 40px; }
+    .hero { padding: 68px 0 40px; }
     .hero-grid { display: grid; grid-template-columns: 1fr 1.02fr; gap: 56px; align-items: center; }
+    .hero-grid > *, .steps > * { min-width: 0; max-width: 100%; }
     .hero h1 {
-      margin: 0 0 20px; font-size: clamp(2.5rem, 5.4vw, 4.1rem); line-height: 1.06;
-      letter-spacing: -.035em; font-weight: 800; text-wrap: balance;
+      margin: 0 0 18px; font-size: clamp(2.35rem, 4.8vw, 3.65rem); line-height: 1.08;
+      letter-spacing: -.032em; font-weight: 700; max-width: 14ch;
     }
-    .hero p.lead { margin: 0 0 32px; font-size: 20px; color: var(--muted); max-width: 46ch; }
+    .hero h1 .hero-line {
+      display: block;
+    }
+    @media (min-width: 641px) {
+      .hero h1 .hero-line { white-space: nowrap; }
+    }
+    .hero p.lead { margin: 0 0 30px; font-size: 18px; line-height: 1.6; color: var(--muted); max-width: 48ch; }
     .hero-cta { display: flex; flex-wrap: wrap; gap: 12px; }
-    .hero-note { margin-top: 20px; font-size: 14px; color: var(--muted); }
+    .hero-note { margin-top: 20px; font-size: 13.5px; color: var(--muted); font-family: var(--mono); letter-spacing: -0.01em; }
     .hero-load { animation: rise .7s cubic-bezier(.2, .8, .2, 1) both; }
     .hero-load:nth-child(2) { animation-delay: .08s; }
     .hero-load:nth-child(3) { animation-delay: .16s; }
@@ -224,7 +239,8 @@
 
     /* Issue finder card */
     .finder {
-      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      background: var(--surface); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border); border-radius: 12px;
       box-shadow: var(--shadow); overflow: hidden; animation: rise .8s .2s cubic-bezier(.2, .8, .2, 1) both;
     }
     .finder-head { padding: 16px 16px 12px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
@@ -285,17 +301,17 @@
 
     /* ---------- Stats ---------- */
     .stats { padding: 40px 0 8px; }
-    .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+    .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--border); border-radius: 12px; background: var(--surface); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: var(--shadow); }
     .stat { padding: 28px 32px; }
     .stat + .stat { border-left: 1px solid var(--border); }
-    .stat .n { font-size: clamp(2rem, 4vw, 2.8rem); font-weight: 800; letter-spacing: -.03em; line-height: 1.1; font-variant-numeric: tabular-nums; }
-    .stat .l { color: var(--muted); font-size: 15px; margin-top: 4px; }
+    .stat .n { font-size: clamp(1.9rem, 3.6vw, 2.5rem); font-weight: 700; letter-spacing: -.03em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .stat .l { color: var(--muted); font-size: 14px; margin-top: 6px; font-family: var(--mono); letter-spacing: 0.02em; }
 
     /* ---------- Sections ---------- */
     section.block { padding: 96px 0 0; }
     .sec-head { display: flex; justify-content: space-between; align-items: end; gap: 24px; flex-wrap: wrap; margin-bottom: 32px; }
-    .sec-head h2 { margin: 0; font-size: clamp(1.7rem, 3.2vw, 2.4rem); letter-spacing: -.025em; line-height: 1.15; text-wrap: balance; }
-    .sec-head p { margin: 8px 0 0; color: var(--muted); font-size: 17px; max-width: 56ch; }
+    .sec-head h2 { margin: 0; font-size: clamp(1.65rem, 3vw, 2.25rem); font-weight: 600; letter-spacing: -.025em; line-height: 1.16; text-wrap: balance; }
+    .sec-head p { margin: 10px 0 0; color: var(--muted); font-size: 16.5px; line-height: 1.55; max-width: 58ch; }
     .link { color: var(--link); font-weight: 500; }
     .link:hover { text-decoration: underline; }
 
@@ -335,14 +351,15 @@
     /* Project cards */
     .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
     .card {
-      display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 12px;
-      background: var(--surface); border: 1px solid var(--border);
-      transition: border-color .2s, transform .2s, box-shadow .2s;
+      display: flex; flex-direction: column; gap: 12px; padding: 22px; border-radius: 12px;
+      background: var(--surface); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--border); box-shadow: var(--shadow);
+      transition: border-color .22s ease, transform .22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow .22s ease;
     }
     .card:hover {
       border-color: var(--border-accent);
-      transform: translateY(-3px);
-      box-shadow: 0 16px 36px rgba(8, 11, 26, 0.9), 0 0 20px rgba(124, 58, 237, 0.25);
+      transform: translateY(-2px);
+      box-shadow: 0 14px 32px rgba(5, 8, 20, 0.72), 0 0 0 1px rgba(139, 92, 246, 0.18);
     }
     .card-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .repo { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--link); min-width: 0; }
@@ -362,11 +379,12 @@
 
     /* CTA */
     .cta {
-      text-align: center; padding: 72px 24px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface);
-      position: relative; overflow: hidden;
+      text-align: center; padding: 68px 24px; border: 1px solid var(--border); border-radius: 16px;
+      background: var(--surface); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      box-shadow: var(--shadow); position: relative; overflow: hidden;
     }
-    .cta h2 { margin: 0 0 12px; font-size: clamp(1.8rem, 3.6vw, 2.7rem); letter-spacing: -.03em; text-wrap: balance; }
-    .cta p { margin: 0 auto 28px; color: var(--muted); font-size: 18px; max-width: 48ch; }
+    .cta h2 { margin: 0 0 12px; font-size: clamp(1.7rem, 3.3vw, 2.45rem); font-weight: 700; letter-spacing: -.028em; text-wrap: balance; }
+    .cta p { margin: 0 auto 28px; color: var(--muted); font-size: 17px; line-height: 1.55; max-width: 50ch; }
     .cta .hero-cta { justify-content: center; }
 
     /* Footer */
@@ -416,6 +434,90 @@
 </head>
 <body>
   <%- include('partials/sparkles-bg') %>
+  <!-- Landing-only WOW Technical Environment Background -->
+  <div class="dx-wow-bg" id="dx-wow-bg" aria-hidden="true">
+    <div class="dx-wow-atmo"></div>
+    <div class="dx-perspective-wrap">
+      <div class="dx-perspective-plane"></div>
+    </div>
+    <div class="dx-orbital-layer">
+      <div class="dx-orbit-ring dx-orbit-1"></div>
+      <div class="dx-orbit-ring dx-orbit-2"></div>
+      <div class="dx-orbit-ring dx-orbit-3"></div>
+    </div>
+    <div class="dx-circuit-layer">
+      <svg class="dx-circuit-svg" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" fill="none">
+        <defs>
+          <linearGradient id="dxGradCyan" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#22d3ee" stop-opacity="0"/>
+            <stop offset="50%" stop-color="#67e8f9" stop-opacity="0.95"/>
+            <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.15"/>
+          </linearGradient>
+          <linearGradient id="dxGradViolet" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#7c3aed" stop-opacity="0"/>
+            <stop offset="50%" stop-color="#c4b5fd" stop-opacity="0.95"/>
+            <stop offset="100%" stop-color="#6366f1" stop-opacity="0.15"/>
+          </linearGradient>
+          <linearGradient id="dxGradBlue" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#3b82f6" stop-opacity="0"/>
+            <stop offset="50%" stop-color="#60a5fa" stop-opacity="0.95"/>
+            <stop offset="100%" stop-color="#22d3ee" stop-opacity="0.15"/>
+          </linearGradient>
+        </defs>
+
+        <!-- Git Branching Network & Circuit Pathways (Left -> Center) -->
+        <path class="dx-path-base" d="M 40 220 L 210 220 C 260 220, 275 160, 330 160 L 540 160 C 595 160, 610 220, 665 220 L 820 220"/>
+        <path class="dx-path-cyan" d="M 40 220 L 210 220 C 265 220, 285 288, 345 288 L 510 288"/>
+        <path class="dx-path-base" d="M 140 760 L 310 760 L 370 700 L 610 700 L 660 650 L 920 650"/>
+
+        <!-- Git Branching Network & Circuit Pathways (Center -> Right) -->
+        <path class="dx-path-cyan" d="M 790 120 L 980 120 C 1030 120, 1050 185, 1105 185 L 1390 185"/>
+        <path class="dx-path-base" d="M 880 790 L 1060 790 C 1110 790, 1125 720, 1180 720 L 1400 720"/>
+        <path class="dx-path-base" d="M 1180 420 L 1270 420 L 1310 380 L 1420 380"/>
+
+        <!-- Animated Energy Light Pulses along Paths -->
+        <path class="dx-pulse-flow dx-pulse-cyan" d="M 40 220 L 210 220 C 260 220, 275 160, 330 160 L 540 160 C 595 160, 610 220, 665 220 L 820 220"/>
+        <path class="dx-pulse-flow dx-pulse-violet" d="M 40 220 L 210 220 C 265 220, 285 288, 345 288 L 510 288"/>
+        <path class="dx-pulse-flow dx-pulse-blue" d="M 140 760 L 310 760 L 370 700 L 610 700 L 660 650 L 920 650"/>
+        <path class="dx-pulse-flow dx-pulse-cyan" d="M 790 120 L 980 120 C 1030 120, 1050 185, 1105 185 L 1390 185"/>
+        <path class="dx-pulse-flow dx-pulse-violet" d="M 880 790 L 1060 790 C 1110 790, 1125 720, 1180 720 L 1400 720"/>
+
+        <!-- Glowing Interconnected Git / Circuit Nodes -->
+        <g>
+          <circle class="dx-node-ring" cx="210" cy="220" r="6" stroke="#22d3ee"/>
+          <circle class="dx-node-core" cx="210" cy="220" r="2.4" fill="#67e8f9"/>
+          <circle class="dx-node-ring" cx="330" cy="160" r="5.5" stroke="#8b5cf6"/>
+          <circle class="dx-node-core" cx="330" cy="160" r="2.2" fill="#c4b5fd"/>
+          <circle class="dx-node-ring" cx="540" cy="160" r="5.5" stroke="#3b82f6"/>
+          <circle class="dx-node-core" cx="540" cy="160" r="2.2" fill="#60a5fa"/>
+          <circle class="dx-node-ring" cx="665" cy="220" r="6" stroke="#22d3ee"/>
+          <circle class="dx-node-core" cx="665" cy="220" r="2.4" fill="#67e8f9"/>
+          <circle class="dx-node-ring" cx="345" cy="288" r="5" stroke="#a78bfa"/>
+          <circle class="dx-node-core" cx="345" cy="288" r="2" fill="#c4b5fd"/>
+          <circle class="dx-node-ring" cx="370" cy="700" r="5.5" stroke="#3b82f6"/>
+          <circle class="dx-node-core" cx="370" cy="700" r="2.2" fill="#60a5fa"/>
+          <circle class="dx-node-ring" cx="660" cy="650" r="6" stroke="#8b5cf6"/>
+          <circle class="dx-node-core" cx="660" cy="650" r="2.4" fill="#c4b5fd"/>
+          <circle class="dx-node-ring" cx="1105" cy="185" r="6" stroke="#22d3ee"/>
+          <circle class="dx-node-core" cx="1105" cy="185" r="2.4" fill="#67e8f9"/>
+          <circle class="dx-node-ring" cx="1180" cy="720" r="5.5" stroke="#a78bfa"/>
+          <circle class="dx-node-core" cx="1180" cy="720" r="2.2" fill="#c4b5fd"/>
+        </g>
+      </svg>
+    </div>
+    <canvas class="dx-wireframe-canvas" id="dx-wireframe-canvas"></canvas>
+    <div class="dx-glyph-layer">
+      <span class="dx-glyph cyan dx-g1">{ }</span>
+      <span class="dx-glyph violet dx-g2">&lt;/&gt;</span>
+      <span class="dx-glyph dx-g3">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6M18 9c0 4.5-6 3.5-12 6"/></svg>
+      </span>
+      <span class="dx-glyph cyan dx-g4">&lt;/&gt;</span>
+      <span class="dx-glyph violet dx-g5">{ pr: merged }</span>
+      <span class="dx-glyph dx-g6">git checkout -b</span>
+    </div>
+  </div>
+  <script src="/js/landing-wow-bg.js" defer></script>
   <a class="skip" href="#main">Skip to content</a>
 
   <!-- ======================= NAVBAR ======================= -->
@@ -519,7 +621,8 @@
       <div class="container">
         <div class="hero-grid">
           <div>
-            <h1 class="hero-load">Your first pull request starts here.</h1>
+            <span class="dx-eyebrow hero-load">OPEN-SOURCE CONTRIBUTION INFRASTRUCTURE</span>
+            <h1 class="hero-load"><span class="hero-line">Your first </span><span class="hero-line"><span class="dx-text-gradient">pull request</span> </span><span class="hero-line">starts here.</span></h1>
             <p class="lead hero-load">Find open source projects that welcome new contributors, pick an issue that fits your skills, and get review from real maintainers.</p>
             <div class="hero-cta hero-load">
               <a class="btn btn-primary btn-lg" href="<%= user ? routes.dashboard : routes.signup %>">

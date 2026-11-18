@@ -101,13 +101,27 @@ function sessionMiddleware(req, res, next) {
 
   const cookies = parseCookies(req.headers.cookie);
   let sid = cookies[SESSION_COOKIE_NAME];
-  let sessionData = sid ? getSession(sid) : null;
+  let sessionData = null;
+
+  if (sid) {
+    try {
+      sessionData = getSession(sid);
+    } catch (err) {
+      console.error('[DevNexus Session Read Error]', err.message);
+      sessionData = null;
+    }
+  }
 
   if (!sid || !sessionData) {
     sid = crypto.randomUUID();
     sessionData = { createdAt: Date.now() };
-    createSession(sid, null, sessionData, SESSION_TTL_MS);
-    res.setHeader('Set-Cookie', `${SESSION_COOKIE_NAME}=${sid}; ${cookieFlags}`);
+    try {
+      createSession(sid, null, sessionData, SESSION_TTL_MS);
+      res.setHeader('Set-Cookie', `${SESSION_COOKIE_NAME}=${sid}; ${cookieFlags}`);
+    } catch (err) {
+      console.error('[DevNexus Session Create Error]', err.message);
+      req.sessionStoreError = err;
+    }
   }
 
   req.sessionID = sid;
@@ -131,12 +145,16 @@ function sessionMiddleware(req, res, next) {
       writable: true,
       value: function () {
         const oldSid = sid;
-        destroySession(oldSid);
+        try {
+          destroySession(oldSid);
+        } catch (e) {
+          // Proceed with issuing a new session ID even if old session cleanup fails
+        }
         sid = crypto.randomUUID();
         req.sessionID = sid;
+        Object.keys(targetSession).forEach(k => delete targetSession[k]);
         targetSession.createdAt = Date.now();
-        const userId = targetSession.userId || (req.user ? req.user.id : null);
-        createSession(sid, userId, targetSession, SESSION_TTL_MS);
+        createSession(sid, null, targetSession, SESSION_TTL_MS);
         res.setHeader('Set-Cookie', `${SESSION_COOKIE_NAME}=${sid}; ${cookieFlags}`);
       }
     });
@@ -146,7 +164,11 @@ function sessionMiddleware(req, res, next) {
       configurable: true,
       writable: true,
       value: function () {
-        destroySession(sid);
+        try {
+          destroySession(sid);
+        } catch (e) {
+          console.error('[DevNexus Session Destroy Error]', e.message);
+        }
         req.session = {};
         req.user = null;
         res.setHeader('Set-Cookie', `${SESSION_COOKIE_NAME}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax${isSecure ? '; Secure' : ''}`);
@@ -158,14 +180,21 @@ function sessionMiddleware(req, res, next) {
 
   // Populate req.user and res.locals if session is authenticated
   if (req.session.userId) {
-    const user = findUserById(req.session.userId);
-    if (user && user.status === 'active') {
-      req.user = user;
-      res.locals.user = user;
-      res.locals.isAdmin = user.role === 'admin';
-    } else {
-      req.session.userId = null;
-      req.session.save();
+    try {
+      const user = findUserById(req.session.userId);
+      if (user && user.status === 'active') {
+        req.user = user;
+        res.locals.user = user;
+        res.locals.isAdmin = user.role === 'admin';
+      } else {
+        req.session.userId = null;
+        try { req.session.save(); } catch (e) {}
+        req.user = null;
+        res.locals.user = null;
+        res.locals.isAdmin = false;
+      }
+    } catch (err) {
+      console.error('[DevNexus Session User Lookup Error]', err.message);
       req.user = null;
       res.locals.user = null;
       res.locals.isAdmin = false;
@@ -204,8 +233,14 @@ function requireAuth(req, res, next) {
     return next();
   }
 
-  if (req.xhr || (req.headers && req.headers.accept && req.headers.accept.includes('application/json'))) {
-    return res.status(401).json({ error: 'AUTHENTICATION_REQUIRED', message: 'You must be signed in to perform this action.' });
+  const isJsonReq = Boolean(
+    req.xhr ||
+    (req.headers && req.headers.accept && req.headers.accept.includes('application/json')) ||
+    (req.originalUrl && req.originalUrl.includes('/api/'))
+  );
+
+  if (isJsonReq) {
+    return res.status(401).json({ success: false, error: 'AUTHENTICATION_REQUIRED', message: 'You must be signed in to perform this action.' });
   }
 
   return res.redirect('/login');

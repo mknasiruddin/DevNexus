@@ -17,6 +17,7 @@ const SUITES = [
   'test_leaderboard.js',
   'test_admin_security.js',
   'test_saanvi_modules.js',
+  'test_github_sync.js',
   'test_member3_streaks.js',
   'test_member3_badges.js'
 ];
@@ -68,7 +69,13 @@ async function runAuditAssertions() {
   console.log('======================================================');
 
   const app = require('../app');
-  const { db, findUserByUsername, getUserBookmarks } = require('../db/database');
+  const {
+    db,
+    findUserByUsername,
+    getUserBookmarks,
+    upsertGithubSyncState,
+    replaceUserSyncedRepos
+  } = require('../db/database');
   const server = http.createServer(app);
   await new Promise(resolve => server.listen(0, resolve));
 
@@ -166,11 +173,11 @@ async function runAuditAssertions() {
     console.log('✓ [Audit 5/8] Developer onboarding & profile editing persistence verified.');
 
     // 6. Bookmark Creation & Removal in SQLite
-    const testIssueUrl = `https://github.com/facebook/react/issues/999999`;
+    const testIssueUrl = `https://github.com/vercel/next.js/issues/999999`;
     const addBmRes = await httpRequest(server, 'POST', '/dashboard/api/bookmarks', {
       issue_id: '999999',
       issue_number: 999999,
-      repo_name: 'facebook/react',
+      repo_name: 'vercel/next.js',
       title: 'Test Audit Issue',
       html_url: testIssueUrl,
       difficulty: 'Beginner',
@@ -210,10 +217,68 @@ async function runAuditAssertions() {
     assert.strictEqual(notFoundJson.status, 404);
     const nfParsed = JSON.parse(notFoundJson.body);
     assert.strictEqual(nfParsed.success, false);
-    console.log('✓ [Audit 8/8] 404 Not Found HTML & JSON handlers verified.');
+    console.log('✓ [Audit 8/9] 404 Not Found HTML & JSON handlers verified.');
+
+    // 9. Landing Page Repository Data Isolation & Zero facebook/react
+    assert.ok(!/facebook\/react/i.test(homeRes.body), 'Landing page must never contain hardcoded facebook/react');
+    assert.ok(homeRes.body.includes('vercel/next.js'), 'Landing page static demo preview must use neutral vercel/next.js');
+
+    const landingNoSyncRes = await httpRequest(server, 'GET', '/', null, { Cookie: userCookie });
+    assert.strictEqual(landingNoSyncRes.status, 200);
+    const noSyncEnd = landingNoSyncRes.body.indexOf('<!-- Interactive issue finder -->');
+    assert.ok(noSyncEnd > 0, 'Hero issue finder marker must exist');
+    const noSyncHeroSlice = landingNoSyncRes.body.slice(
+      landingNoSyncRes.body.indexOf('id="hero-stage"'),
+      noSyncEnd
+    );
+    assert.ok(!/facebook\/react/i.test(landingNoSyncRes.body), 'Authenticated landing page must never contain facebook/react');
+    assert.ok(noSyncHeroSlice.includes(`@${tempUsername}`), 'Logged-in user without synced repos must see their own @username in hero satellite');
+    assert.ok(!noSyncHeroSlice.includes('vercel/next.js'), 'Authenticated hero stage without synced repos must never display another org repo as belonging to the user');
+
+    const mockGithubId = '9900' + Date.now().toString().slice(-5);
+    db.prepare('UPDATE users SET github_id = ? WHERE id = ?').run(mockGithubId, dbUser.id);
+    upsertGithubSyncState(dbUser.id, mockGithubId, tempUsername, {
+      totalRepos: 1,
+      publicRepos: 1,
+      privateRepos: 0,
+      totalCommits: 4,
+      prsCreated: 1,
+      prsMerged: 1
+    });
+    replaceUserSyncedRepos(dbUser.id, mockGithubId, [{
+      id: '888001',
+      name: 'personal-audit-repo',
+      fullName: `${tempUsername}/personal-audit-repo`,
+      htmlUrl: `https://github.com/${tempUsername}/personal-audit-repo`,
+      description: 'Personal repo synced for QA verification',
+      language: 'JavaScript',
+      stars: 42,
+      forks: 5,
+      openIssues: 1,
+      pushedAt: new Date().toISOString(),
+      health: { score: 88, statusLabel: 'Healthy' }
+    }]);
+
+    const landingSyncedRes = await httpRequest(server, 'GET', '/', null, { Cookie: userCookie });
+    assert.strictEqual(landingSyncedRes.status, 200);
+    const syncedEnd = landingSyncedRes.body.indexOf('<!-- Interactive issue finder -->');
+    assert.ok(syncedEnd > 0, 'Hero issue finder marker must exist for synced response');
+    const syncedHeroSlice = landingSyncedRes.body.slice(
+      landingSyncedRes.body.indexOf('class="hero"'),
+      syncedEnd
+    );
+    assert.ok(syncedHeroSlice.includes(`${tempUsername}/personal-audit-repo`), 'Authenticated GitHub hero badge must render connected user real synced repo');
+    assert.ok(syncedHeroSlice.includes('Health 88'), 'Authenticated GitHub hero badge must render real synced repo health score');
+    assert.ok(!syncedHeroSlice.includes('vercel/next.js'), 'Authenticated GitHub hero badge must not show another org repo');
+    console.log('✓ [Audit 9/9] Landing page repository isolation & zero facebook/react verified.');
 
   } finally {
     try {
+      const cleanupUser = findUserByUsername(tempUsername);
+      if (cleanupUser) {
+        db.prepare('DELETE FROM github_synced_repos WHERE user_id = ?').run(cleanupUser.id);
+        db.prepare('DELETE FROM github_sync_states WHERE user_id = ?').run(cleanupUser.id);
+      }
       db.prepare('DELETE FROM users WHERE username = ?').run(tempUsername);
       db.prepare("DELETE FROM activity_logs WHERE target LIKE ?").run(`%${tempUsername}%`);
     } catch (e) {}

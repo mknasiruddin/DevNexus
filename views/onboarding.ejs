@@ -1,10 +1,16 @@
 <%
   const isEditing = Boolean(locals.isEditing);
   const currentExp = (user && user.experience_level) ? user.experience_level : 'Beginner';
-  const savedSkills = (Array.isArray(locals.existingSkills) && existingSkills.length > 0)
-    ? existingSkills.map(s => String(s).toLowerCase())
-    : ['javascript', 'typescript', 'python'];
-  const skillOptions = ['JavaScript', 'TypeScript', 'Python', 'Node.js', 'Go', 'Rust', 'React', 'Java', 'C++', 'Docs'];
+  const rawSavedSkills = (Array.isArray(locals.existingSkills) && existingSkills.length > 0)
+    ? existingSkills.map(s => String(s).trim()).filter(Boolean)
+    : (isEditing ? [] : ['JavaScript', 'TypeScript', 'Python']);
+  const savedSkillsLower = rawSavedSkills.map(s => s.toLowerCase());
+  const categories = Array.isArray(locals.techCategories) ? locals.techCategories : [];
+  const catalogNamesLower = new Set();
+  categories.forEach(cat => {
+    (cat.technologies || []).forEach(t => catalogNamesLower.add(t.name.toLowerCase()));
+  });
+  const customSavedSkills = rawSavedSkills.filter(s => !catalogNamesLower.has(s.toLowerCase()));
 %>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -19,33 +25,391 @@
   <style>
     .onboarding-card {
       background: var(--surface);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 14px;
       padding: 40px 36px;
       box-shadow: var(--shadow);
     }
-    .skill-check-grid {
+    .tech-selector-shell {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-      gap: 10px;
+      gap: 12px;
       margin-top: 10px;
     }
-    .skill-label {
+    .tech-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .tech-search-box {
+      position: relative;
+      flex: 1 1 260px;
+    }
+    .tech-search-box svg.tech-search-icon {
+      position: absolute;
+      left: 11px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      pointer-events: none;
+    }
+    .tech-search-input {
+      width: 100%;
+      height: 38px;
+      padding: 0 34px 0 34px;
+      font: inherit;
+      font-size: 13px;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .tech-search-input:focus {
+      border-color: var(--link);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--link) 20%, transparent);
+    }
+    .tech-search-clear {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      padding: 2px 5px;
+      border-radius: 4px;
+      display: none;
+    }
+    .tech-search-clear.visible {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .tech-search-clear:hover {
+      color: var(--text);
+      background: var(--surface-2);
+    }
+    .tech-toolbar-actions {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 9px 14px;
-      border-radius: 8px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      cursor: pointer;
-      font-size: 13.5px;
-      font-weight: 500;
-      transition: all .15s;
+      flex-wrap: wrap;
     }
-    .skill-label:hover { border-color: var(--muted); }
-    .skill-label:has(input:checked) { border-color: var(--link); background: color-mix(in srgb, var(--link) 12%, transparent); }
-    .skill-label input:checked + span { color: var(--link); font-weight: 600; }
+    .tech-count-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 11px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      background: color-mix(in srgb, var(--link) 14%, transparent);
+      border: 1px solid color-mix(in srgb, var(--link) 35%, transparent);
+      color: var(--link);
+    }
+    .tech-count-badge.is-empty {
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(239, 68, 68, 0.32);
+      color: #f87171;
+    }
+    .tech-action-btn {
+      height: 32px;
+      padding: 0 11px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--muted);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .15s ease;
+    }
+    .tech-action-btn:hover:not(:disabled) {
+      color: var(--text);
+      border-color: var(--muted);
+      background: var(--surface-2);
+    }
+    .tech-action-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .selected-tray {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 10px 12px;
+      border-radius: 9px;
+      background: color-mix(in srgb, var(--bg) 75%, transparent);
+      border: 1px dashed var(--border);
+      min-height: 42px;
+      align-items: center;
+    }
+    .selected-tray-empty {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .selected-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px 4px 10px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--link) 16%, transparent);
+      border: 1px solid color-mix(in srgb, var(--link) 45%, transparent);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+      animation: techPop .18s ease-out;
+    }
+    .selected-pill button {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 0 2px;
+      font-size: 14px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+    }
+    .selected-pill button:hover {
+      color: #f87171;
+    }
+    .tech-categories-list {
+      display: grid;
+      gap: 10px;
+    }
+    .tech-category-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg);
+      overflow: hidden;
+      transition: border-color .18s ease;
+    }
+    .tech-category-card.has-selections {
+      border-color: color-mix(in srgb, var(--link) 42%, var(--border));
+    }
+    .tech-category-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 11px 14px;
+      background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+    }
+    .tech-category-toggle {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-align: left;
+      background: none;
+      border: none;
+      padding: 0;
+      color: var(--text);
+      font: inherit;
+      cursor: pointer;
+      min-width: 0;
+    }
+    .tech-category-chev {
+      flex-shrink: 0;
+      color: var(--muted);
+      transition: transform .22s ease;
+    }
+    .tech-category-card.is-open .tech-category-chev {
+      transform: rotate(180deg);
+      color: var(--link);
+    }
+    .tech-category-title-wrap {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+    }
+    .tech-category-name {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .tech-category-desc {
+      font-size: 11.5px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tech-category-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .cat-selected-pill {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--link) 15%, transparent);
+      color: var(--link);
+      display: none;
+    }
+    .cat-selected-pill.visible {
+      display: inline-block;
+    }
+    .cat-select-btn {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      cursor: pointer;
+      transition: all .15s ease;
+    }
+    .cat-select-btn:hover {
+      color: var(--text);
+      border-color: var(--link);
+    }
+    .tech-category-body {
+      display: grid;
+      grid-template-rows: 0fr;
+      transition: grid-template-rows .24s ease;
+    }
+    .tech-category-card.is-open .tech-category-body {
+      grid-template-rows: 1fr;
+    }
+    .tech-category-body-inner {
+      overflow: hidden;
+    }
+    .tech-chip-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 12px 14px 14px;
+      border-top: 1px solid var(--border);
+    }
+    .tech-chip {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 12.5px;
+      font-weight: 500;
+      cursor: pointer;
+      user-select: none;
+      transition: transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease, color .15s ease;
+    }
+    .tech-chip input[type="checkbox"] {
+      position: absolute;
+      opacity: 0;
+      width: 1px;
+      height: 1px;
+      pointer-events: none;
+    }
+    .tech-chip:hover {
+      border-color: color-mix(in srgb, var(--link) 65%, var(--border));
+      transform: translateY(-1px);
+      background: color-mix(in srgb, var(--surface-2) 70%, var(--surface));
+    }
+    .tech-chip:active {
+      transform: scale(0.97);
+    }
+    .tech-chip:has(input:focus-visible) {
+      outline: 2px solid var(--link);
+      outline-offset: 2px;
+    }
+    .tech-chip.is-selected {
+      border-color: var(--link);
+      background: linear-gradient(135deg, color-mix(in srgb, var(--link) 22%, var(--surface)), color-mix(in srgb, #7C3AED 18%, var(--surface)));
+      color: #fff;
+      font-weight: 600;
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--link) 35%, transparent), 0 4px 12px rgba(99, 102, 241, 0.22);
+      animation: techPop .18s ease-out;
+    }
+    [data-theme="light"] .tech-chip.is-selected {
+      color: #1e1b4b;
+    }
+    .tech-chip-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .tech-chip-check {
+      display: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--link);
+      color: #fff;
+      font-size: 10px;
+      line-height: 14px;
+      text-align: center;
+      font-weight: 800;
+      flex-shrink: 0;
+    }
+    .tech-chip.is-selected .tech-chip-check {
+      display: inline-block;
+    }
+    .custom-tech-panel {
+      display: none;
+      padding: 0 14px 14px;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .custom-tech-panel.open {
+      display: flex;
+    }
+    .custom-tech-input {
+      flex: 1 1 200px;
+      height: 36px;
+      padding: 0 11px;
+      font: inherit;
+      font-size: 12.5px;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      outline: none;
+    }
+    .custom-tech-input:focus {
+      border-color: var(--link);
+    }
+    .tech-search-empty {
+      display: none;
+      padding: 20px;
+      text-align: center;
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      background: var(--bg);
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .tech-search-empty.visible {
+      display: grid;
+      gap: 10px;
+      justify-items: center;
+    }
+    @keyframes techPop {
+      0% { transform: scale(0.95); }
+      60% { transform: scale(1.03); }
+      100% { transform: scale(1); }
+    }
     .level-cards {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -102,7 +466,7 @@
 
   <!-- ======================= MAIN CONTENT ======================= -->
   <main class="dashboard-main" style="display: flex; align-items: center; justify-content: center; min-height: 75vh; padding: 32px 0;">
-    <div class="container" style="max-width: 640px;">
+    <div class="container" style="max-width: 760px;">
       <div class="onboarding-card">
 
         <div style="text-align: center; margin-bottom: 28px;">
@@ -117,7 +481,14 @@
           </p>
         </div>
 
-        <form action="<%= isEditing ? '/profile' : '/onboarding' %>" method="POST">
+        <div id="onboarding-error-banner"
+             role="alert"
+             style="padding: 11px 14px; border-radius: 8px; margin-bottom: 18px; font-size: 13px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171; <%= locals.error ? 'display: flex;' : 'display: none;' %> align-items: center; gap: 10px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span id="onboarding-error-text"><%= locals.error || '' %></span>
+        </div>
+
+        <form id="onboarding-form" action="<%= isEditing ? '/profile' : '/onboarding' %>" method="POST">
           <!-- Display Name & Bio -->
           <div style="display: grid; gap: 14px; margin-bottom: 24px;">
             <div>
@@ -161,19 +532,123 @@
           </div>
 
           <!-- Technologies & Skills -->
-          <div style="margin-bottom: 24px;">
-            <label style="display: block; font-weight: 600; font-size: 13.5px; margin-bottom: 4px;">
+          <div style="margin-bottom: 24px;" id="tech-selection-section">
+            <label for="tech-search-input" style="display: block; font-weight: 600; font-size: 13.5px; margin-bottom: 4px;">
               2. Select technologies and languages you want to contribute in:
             </label>
-            <div class="skill-check-grid">
-              <% skillOptions.forEach(function(opt) {
-                   const isChecked = savedSkills.includes(opt.toLowerCase());
-              %>
-                <label class="skill-label">
-                  <input type="checkbox" name="skills" value="<%= opt %>" <%= isChecked ? 'checked' : '' %>>
-                  <span><%= opt %></span>
-                </label>
-              <% }); %>
+            <p style="margin: 0 0 10px; font-size: 12px; color: var(--muted);">
+              Choose one or more technologies across categories or search below. At least one selection is required.
+            </p>
+
+            <div class="tech-selector-shell">
+              <!-- Search, Selected Count, Expand/Collapse & Clear All Toolbar -->
+              <div class="tech-toolbar">
+                <div class="tech-search-box">
+                  <svg class="tech-search-icon" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="7" cy="7" r="4.8"/><path d="M10.6 10.6L14 14"/></svg>
+                  <input type="search" id="tech-search-input" class="tech-search-input" placeholder="Search technologies (e.g. React, Python, Docker, Figma)..." autocomplete="off" aria-label="Search technologies by name">
+                  <button type="button" id="tech-search-clear" class="tech-search-clear" aria-label="Clear technology search" title="Clear search">&times;</button>
+                </div>
+                <div class="tech-toolbar-actions">
+                  <span class="tech-count-badge" id="selected-tech-badge" aria-live="polite">
+                    <span id="selected-tech-count">0</span> selected
+                  </span>
+                  <button type="button" id="tech-toggle-all-btn" class="tech-action-btn">Expand All</button>
+                  <button type="button" id="tech-clear-all-btn" class="tech-action-btn">Clear All</button>
+                </div>
+              </div>
+
+              <!-- Selected Summary Tray -->
+              <div class="selected-tray" id="selected-tech-tray" aria-label="Selected technologies">
+                <span class="selected-tray-empty">No technologies selected yet. Select at least one below.</span>
+              </div>
+
+              <!-- Search Empty State -->
+              <div class="tech-search-empty" id="tech-search-empty">
+                <span>No preset technologies match "<strong id="tech-search-empty-term"></strong>".</span>
+                <button type="button" id="add-search-as-custom-btn" class="tech-action-btn">+ Add as custom technology</button>
+              </div>
+
+              <!-- Expandable Category Sections -->
+              <div class="tech-categories-list" id="tech-categories-list">
+                <% categories.forEach(function(cat, idx) {
+                     const catTechs = cat.technologies || [];
+                     const hasSavedInCat = catTechs.some(t => savedSkillsLower.includes(t.name.toLowerCase()));
+                     const isOtherCat = cat.id === 'other-technologies';
+                     const openByDefault = idx < 2 || hasSavedInCat || (isOtherCat && customSavedSkills.length > 0);
+                %>
+                  <section class="tech-category-card <%= openByDefault ? 'is-open' : '' %>" data-category-id="<%= cat.id %>">
+                    <div class="tech-category-header">
+                      <button type="button"
+                              class="tech-category-toggle"
+                              aria-expanded="<%= openByDefault ? 'true' : 'false' %>"
+                              aria-controls="cat-body-<%= cat.id %>">
+                        <svg class="tech-category-chev" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
+                        <span class="tech-category-title-wrap">
+                          <span class="tech-category-name"><%= cat.name %></span>
+                          <span class="tech-category-desc"><%= cat.description %></span>
+                        </span>
+                      </button>
+                      <div class="tech-category-meta">
+                        <span class="cat-selected-pill" data-cat-count="<%= cat.id %>">0 selected</span>
+                        <button type="button" class="cat-select-btn" data-cat-select="<%= cat.id %>">Select all</button>
+                      </div>
+                    </div>
+
+                    <div class="tech-category-body" id="cat-body-<%= cat.id %>">
+                      <div class="tech-category-body-inner">
+                        <div class="tech-chip-grid" data-chip-grid="<%= cat.id %>">
+                          <% catTechs.forEach(function(tech) {
+                               const isChecked = savedSkillsLower.includes(tech.name.toLowerCase());
+                          %>
+                            <label class="tech-chip <%= isChecked ? 'is-selected' : '' %>"
+                                   data-tech-name="<%= tech.name.toLowerCase() %>"
+                                   data-category="<%= cat.id %>">
+                              <input type="checkbox" name="skills" value="<%= tech.name %>" <%= isChecked ? 'checked' : '' %>>
+                              <span class="tech-chip-dot" style="background-color: <%= tech.color %>;"></span>
+                              <span class="tech-chip-text"><%= tech.name %></span>
+                              <span class="tech-chip-check" aria-hidden="true">&#10003;</span>
+                            </label>
+                          <% }); %>
+
+                          <% if (isOtherCat) { %>
+                            <% customSavedSkills.forEach(function(cSkill) { %>
+                              <label class="tech-chip is-selected is-custom-chip"
+                                     data-tech-name="<%= cSkill.toLowerCase() %>"
+                                     data-category="<%= cat.id %>">
+                                <input type="checkbox" name="skills" value="<%= cSkill %>" checked>
+                                <span class="tech-chip-dot" style="background-color: #818cf8;"></span>
+                                <span class="tech-chip-text"><%= cSkill %></span>
+                                <span class="tech-chip-check" aria-hidden="true">&#10003;</span>
+                              </label>
+                            <% }); %>
+                            <button type="button"
+                                    id="other-custom-toggle-btn"
+                                    class="tech-chip <%= customSavedSkills.length > 0 ? 'is-selected' : '' %>"
+                                    aria-expanded="<%= customSavedSkills.length > 0 ? 'true' : 'false' %>"
+                                    aria-controls="custom-tech-panel">
+                              <span class="tech-chip-dot" style="background-color: #a78bfa;"></span>
+                              <span class="tech-chip-text">+ Other (Custom)</span>
+                            </button>
+                          <% } %>
+                        </div>
+
+                        <% if (isOtherCat) { %>
+                          <div class="custom-tech-panel <%= customSavedSkills.length > 0 ? 'open' : '' %>" id="custom-tech-panel">
+                            <input type="text"
+                                   id="custom-tech-input"
+                                   name="custom_skills"
+                                   class="custom-tech-input"
+                                   maxlength="80"
+                                   placeholder="Type a custom technology (e.g. Zig, Bun, Godot) and press Add..."
+                                   aria-label="Custom technology name">
+                            <button type="button" id="add-custom-tech-btn" class="btn btn-sm btn-primary" style="height: 36px;">+ Add</button>
+                          </div>
+                        <% } %>
+                      </div>
+                    </div>
+                  </section>
+                <% }); %>
+              </div>
             </div>
           </div>
 
@@ -181,7 +656,7 @@
             <% if (isEditing) { %>
               <a href="/dashboard" class="btn btn-lg" style="height: 44px;">Cancel</a>
             <% } %>
-            <button type="submit" class="btn btn-primary btn-lg" style="flex: 1; height: 44px;">
+            <button type="submit" id="onboarding-submit-btn" class="btn btn-primary btn-lg" style="flex: 1; height: 44px;">
               <%= isEditing ? 'Save Profile & Return to Dashboard →' : 'Complete Setup & Launch Dashboard →' %>
             </button>
           </div>
@@ -193,5 +668,415 @@
 
   <!-- ======================= FOOTER ======================= -->
   <%- include('partials/footer') %>
+  <script>
+    (function () {
+      'use strict';
+      var form = document.getElementById('onboarding-form');
+      var btn = document.getElementById('onboarding-submit-btn');
+      var errBanner = document.getElementById('onboarding-error-banner');
+      var errText = document.getElementById('onboarding-error-text');
+      var nameInput = document.getElementById('profile-name');
+      var techSection = document.getElementById('tech-selection-section');
+      var searchInput = document.getElementById('tech-search-input');
+      var searchClearBtn = document.getElementById('tech-search-clear');
+      var selectedCountEl = document.getElementById('selected-tech-count');
+      var selectedBadgeEl = document.getElementById('selected-tech-badge');
+      var selectedTrayEl = document.getElementById('selected-tech-tray');
+      var toggleAllBtn = document.getElementById('tech-toggle-all-btn');
+      var clearAllBtn = document.getElementById('tech-clear-all-btn');
+      var searchEmptyEl = document.getElementById('tech-search-empty');
+      var searchEmptyTermEl = document.getElementById('tech-search-empty-term');
+      var addSearchCustomBtn = document.getElementById('add-search-as-custom-btn');
+      var otherToggleBtn = document.getElementById('other-custom-toggle-btn');
+      var customPanel = document.getElementById('custom-tech-panel');
+      var customInput = document.getElementById('custom-tech-input');
+      var addCustomBtn = document.getElementById('add-custom-tech-btn');
+      var categoryCards = Array.from(document.querySelectorAll('.tech-category-card'));
+
+      if (!form || !btn) return;
+
+      function showError(msg) {
+        if (errBanner && errText) {
+          errText.textContent = msg;
+          errBanner.style.display = 'flex';
+        }
+      }
+
+      function hideError() {
+        if (errBanner) errBanner.style.display = 'none';
+      }
+
+      function getAllSkillCheckboxes() {
+        return Array.from(form.querySelectorAll('input[type="checkbox"][name="skills"]'));
+      }
+
+      function setCategoryOpen(card, open) {
+        if (!card) return;
+        card.classList.toggle('is-open', open);
+        var toggle = card.querySelector('.tech-category-toggle');
+        if (toggle) toggle.setAttribute('aria-expanded', String(open));
+      }
+
+      function updateToggleAllLabel() {
+        if (!toggleAllBtn || categoryCards.length === 0) return;
+        var visibleCards = categoryCards.filter(function (c) { return c.style.display !== 'none'; });
+        var allOpen = visibleCards.length > 0 && visibleCards.every(function (c) { return c.classList.contains('is-open'); });
+        toggleAllBtn.textContent = allOpen ? 'Collapse All' : 'Expand All';
+      }
+
+      function syncSelectionUI() {
+        var allBoxes = getAllSkillCheckboxes();
+        var checkedBoxes = [];
+
+        allBoxes.forEach(function (cb) {
+          var chip = cb.closest('.tech-chip');
+          if (chip) chip.classList.toggle('is-selected', cb.checked);
+          if (cb.checked) checkedBoxes.push(cb);
+        });
+
+        var totalSelected = checkedBoxes.length;
+        if (selectedCountEl) selectedCountEl.textContent = String(totalSelected);
+        if (selectedBadgeEl) selectedBadgeEl.classList.toggle('is-empty', totalSelected === 0);
+        if (clearAllBtn) clearAllBtn.disabled = totalSelected === 0;
+        if (totalSelected > 0 && errBanner && errText && errText.textContent.indexOf('technology') !== -1) {
+          hideError();
+        }
+
+        // Per-category counts & Select All / Deselect All labels
+        categoryCards.forEach(function (card) {
+          var catId = card.getAttribute('data-category-id');
+          var catBoxes = Array.from(card.querySelectorAll('input[type="checkbox"][name="skills"]'));
+          var visibleCatBoxes = catBoxes.filter(function (cb) {
+            var ch = cb.closest('.tech-chip');
+            return ch && ch.style.display !== 'none';
+          });
+          var catSelected = catBoxes.filter(function (cb) { return cb.checked; }).length;
+          var visibleSelected = visibleCatBoxes.filter(function (cb) { return cb.checked; }).length;
+
+          card.classList.toggle('has-selections', catSelected > 0);
+          var countPill = card.querySelector('[data-cat-count="' + catId + '"]');
+          if (countPill) {
+            countPill.textContent = catSelected + ' selected';
+            countPill.classList.toggle('visible', catSelected > 0);
+          }
+
+          var selectBtn = card.querySelector('[data-cat-select="' + catId + '"]');
+          if (selectBtn) {
+            var allVisibleSelected = visibleCatBoxes.length > 0 && visibleSelected === visibleCatBoxes.length;
+            selectBtn.textContent = allVisibleSelected ? 'Deselect all' : 'Select all';
+            selectBtn.disabled = visibleCatBoxes.length === 0;
+          }
+        });
+
+        // Selected summary tray
+        if (selectedTrayEl) {
+          selectedTrayEl.innerHTML = '';
+          if (checkedBoxes.length === 0) {
+            var emptySpan = document.createElement('span');
+            emptySpan.className = 'selected-tray-empty';
+            emptySpan.textContent = 'No technologies selected yet. Select at least one below.';
+            selectedTrayEl.appendChild(emptySpan);
+          } else {
+            checkedBoxes.forEach(function (cb) {
+              var chip = cb.closest('.tech-chip');
+              var dot = chip ? chip.querySelector('.tech-chip-dot') : null;
+              var dotColor = dot ? dot.style.backgroundColor : '#818cf8';
+
+              var pill = document.createElement('span');
+              pill.className = 'selected-pill';
+
+              var dotEl = document.createElement('span');
+              dotEl.className = 'tech-chip-dot';
+              dotEl.style.backgroundColor = dotColor;
+
+              var textEl = document.createElement('span');
+              textEl.textContent = cb.value;
+
+              var removeBtn = document.createElement('button');
+              removeBtn.type = 'button';
+              removeBtn.setAttribute('aria-label', 'Remove ' + cb.value);
+              removeBtn.title = 'Remove ' + cb.value;
+              removeBtn.textContent = '\u00D7';
+              removeBtn.addEventListener('click', function () {
+                cb.checked = false;
+                syncSelectionUI();
+              });
+
+              pill.appendChild(dotEl);
+              pill.appendChild(textEl);
+              pill.appendChild(removeBtn);
+              selectedTrayEl.appendChild(pill);
+            });
+          }
+        }
+      }
+
+      // Checkbox change delegation
+      if (techSection) {
+        techSection.addEventListener('change', function (e) {
+          if (e.target && e.target.matches('input[type="checkbox"][name="skills"]')) {
+            syncSelectionUI();
+          }
+        });
+      }
+
+      // Category accordion toggles & category-wise select all
+      categoryCards.forEach(function (card) {
+        var toggle = card.querySelector('.tech-category-toggle');
+        if (toggle) {
+          toggle.addEventListener('click', function () {
+            var isOpen = card.classList.contains('is-open');
+            setCategoryOpen(card, !isOpen);
+            updateToggleAllLabel();
+          });
+        }
+
+        var catSelectBtn = card.querySelector('.cat-select-btn');
+        if (catSelectBtn) {
+          catSelectBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var catBoxes = Array.from(card.querySelectorAll('input[type="checkbox"][name="skills"]')).filter(function (cb) {
+              var ch = cb.closest('.tech-chip');
+              return ch && ch.style.display !== 'none';
+            });
+            if (catBoxes.length === 0) return;
+            var allChecked = catBoxes.every(function (cb) { return cb.checked; });
+            catBoxes.forEach(function (cb) { cb.checked = !allChecked; });
+            if (!allChecked && !card.classList.contains('is-open')) {
+              setCategoryOpen(card, true);
+              updateToggleAllLabel();
+            }
+            syncSelectionUI();
+          });
+        }
+      });
+
+      // Expand All / Collapse All
+      if (toggleAllBtn) {
+        toggleAllBtn.addEventListener('click', function () {
+          var visibleCards = categoryCards.filter(function (c) { return c.style.display !== 'none'; });
+          var allOpen = visibleCards.length > 0 && visibleCards.every(function (c) { return c.classList.contains('is-open'); });
+          visibleCards.forEach(function (card) {
+            setCategoryOpen(card, !allOpen);
+          });
+          updateToggleAllLabel();
+        });
+      }
+
+      // Clear All selections
+      if (clearAllBtn) {
+        clearAllBtn.addEventListener('click', function () {
+          getAllSkillCheckboxes().forEach(function (cb) { cb.checked = false; });
+          syncSelectionUI();
+        });
+      }
+
+      // Search filtering
+      function applySearchFilter() {
+        var rawQ = searchInput ? searchInput.value : '';
+        var q = rawQ.trim().toLowerCase();
+        if (searchClearBtn) searchClearBtn.classList.toggle('visible', rawQ.length > 0);
+
+        var totalMatches = 0;
+
+        categoryCards.forEach(function (card) {
+          var chips = Array.from(card.querySelectorAll('.tech-chip[data-tech-name]'));
+          var catMatches = 0;
+
+          chips.forEach(function (chip) {
+            var techName = chip.getAttribute('data-tech-name') || '';
+            var matches = !q || techName.indexOf(q) !== -1;
+            chip.style.display = matches ? '' : 'none';
+            if (matches) catMatches += 1;
+          });
+
+          if (otherToggleBtn && card.getAttribute('data-category-id') === 'other-technologies') {
+            otherToggleBtn.style.display = q ? 'none' : '';
+          }
+
+          if (!q) {
+            card.style.display = '';
+          } else {
+            card.style.display = catMatches > 0 ? '' : 'none';
+            if (catMatches > 0) {
+              setCategoryOpen(card, true);
+            }
+          }
+          totalMatches += catMatches;
+        });
+
+        if (searchEmptyEl && searchEmptyTermEl) {
+          if (q && totalMatches === 0) {
+            searchEmptyTermEl.textContent = rawQ.trim();
+            searchEmptyEl.classList.add('visible');
+          } else {
+            searchEmptyEl.classList.remove('visible');
+          }
+        }
+        updateToggleAllLabel();
+        syncSelectionUI();
+      }
+
+      if (searchInput) {
+        searchInput.addEventListener('input', applySearchFilter);
+        searchInput.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape' && searchInput.value) {
+            searchInput.value = '';
+            applySearchFilter();
+          }
+        });
+      }
+
+      if (searchClearBtn && searchInput) {
+        searchClearBtn.addEventListener('click', function () {
+          searchInput.value = '';
+          applySearchFilter();
+          searchInput.focus();
+        });
+      }
+
+      // Custom "Other" Technology Entry
+      function addCustomTechnologies(rawText) {
+        var parts = String(rawText || '').split(',').map(function (s) { return s.trim().slice(0, 50); }).filter(Boolean);
+        if (parts.length === 0) return false;
+
+        var otherCard = document.querySelector('.tech-category-card[data-category-id="other-technologies"]');
+        var otherGrid = document.querySelector('[data-chip-grid="other-technologies"]');
+        if (!otherGrid) return false;
+
+        if (otherCard) setCategoryOpen(otherCard, true);
+        if (customPanel) customPanel.classList.add('open');
+        if (otherToggleBtn) {
+          otherToggleBtn.classList.add('is-selected');
+          otherToggleBtn.setAttribute('aria-expanded', 'true');
+        }
+
+        parts.forEach(function (techName) {
+          if (techName.toLowerCase() === 'other') return;
+          var existing = getAllSkillCheckboxes().find(function (cb) {
+            return cb.value.trim().toLowerCase() === techName.toLowerCase();
+          });
+          if (existing) {
+            existing.checked = true;
+            var existingCard = existing.closest('.tech-category-card');
+            if (existingCard) setCategoryOpen(existingCard, true);
+            return;
+          }
+
+          var label = document.createElement('label');
+          label.className = 'tech-chip is-selected is-custom-chip';
+          label.setAttribute('data-tech-name', techName.toLowerCase());
+          label.setAttribute('data-category', 'other-technologies');
+
+          var input = document.createElement('input');
+          input.type = 'checkbox';
+          input.name = 'skills';
+          input.value = techName;
+          input.checked = true;
+
+          var dot = document.createElement('span');
+          dot.className = 'tech-chip-dot';
+          dot.style.backgroundColor = '#818cf8';
+
+          var text = document.createElement('span');
+          text.className = 'tech-chip-text';
+          text.textContent = techName;
+
+          var check = document.createElement('span');
+          check.className = 'tech-chip-check';
+          check.setAttribute('aria-hidden', 'true');
+          check.textContent = '\u2713';
+
+          label.appendChild(input);
+          label.appendChild(dot);
+          label.appendChild(text);
+          label.appendChild(check);
+
+          if (otherToggleBtn && otherToggleBtn.parentNode === otherGrid) {
+            otherGrid.insertBefore(label, otherToggleBtn);
+          } else {
+            otherGrid.appendChild(label);
+          }
+        });
+
+        syncSelectionUI();
+        return true;
+      }
+
+      if (otherToggleBtn && customPanel) {
+        otherToggleBtn.addEventListener('click', function () {
+          var isOpen = customPanel.classList.toggle('open');
+          otherToggleBtn.setAttribute('aria-expanded', String(isOpen));
+          otherToggleBtn.classList.toggle('is-selected', isOpen || document.querySelectorAll('.is-custom-chip input:checked').length > 0);
+          if (isOpen && customInput) customInput.focus();
+        });
+      }
+
+      if (addCustomBtn && customInput) {
+        addCustomBtn.addEventListener('click', function () {
+          if (addCustomTechnologies(customInput.value)) {
+            customInput.value = '';
+            customInput.focus();
+          }
+        });
+      }
+
+      if (customInput) {
+        customInput.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            if (addCustomTechnologies(customInput.value)) {
+              customInput.value = '';
+            }
+          }
+        });
+      }
+
+      if (addSearchCustomBtn && searchInput) {
+        addSearchCustomBtn.addEventListener('click', function () {
+          var val = searchInput.value.trim();
+          if (addCustomTechnologies(val)) {
+            searchInput.value = '';
+            applySearchFilter();
+          }
+        });
+      }
+
+      // Initialize UI state
+      updateToggleAllLabel();
+      syncSelectionUI();
+
+      // Form Validation & Duplicate Submission Guard
+      var submitting = false;
+      form.addEventListener('submit', function (e) {
+        if (submitting) { e.preventDefault(); return; }
+
+        if (customInput && customInput.value.trim()) {
+          addCustomTechnologies(customInput.value);
+          customInput.value = '';
+        }
+
+        if (nameInput && !nameInput.value.trim()) {
+          e.preventDefault();
+          showError('Please enter a display name.');
+          nameInput.focus();
+          return;
+        }
+
+        var checkedSkills = form.querySelectorAll('input[type="checkbox"][name="skills"]:checked');
+        if (checkedSkills.length === 0) {
+          e.preventDefault();
+          showError('Please select at least one technology or language.');
+          if (searchInput) searchInput.focus();
+          return;
+        }
+
+        hideError();
+        submitting = true;
+        btn.disabled = true;
+        btn.textContent = 'Saving Preferences...';
+      });
+    })();
+  </script>
 </body>
 </html>

@@ -301,7 +301,7 @@
 
 .skill-node:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(8, 11, 26, 0.6), 0 0 16px rgba(124, 58, 237, 0.2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 8px 20px -6px rgba(0, 0, 0, 0.5);
 }
 
 .skill-node:focus-visible {
@@ -332,24 +332,24 @@
 }
 
 @keyframes pulse-border {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); border-color: var(--accent-solid); }
-  50% { box-shadow: 0 0 0 6px rgba(99, 102, 241, 0.18); border-color: #818cf8; }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); border-color: var(--accent-solid); }
+  50% { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.18); border-color: #818cf8; }
 }
 
 /* Unlocked */
 .skill-node.node-unlocked {
   border-color: var(--accent-solid);
   background: color-mix(in srgb, var(--accent-solid) 10%, var(--bg));
-  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.3), 0 4px 20px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3), 0 4px 20px rgba(59, 130, 246, 0.2);
 }
 
 .skill-node.node-unlocked:hover {
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.5), 0 8px 28px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5), 0 8px 28px rgba(59, 130, 246, 0.3);
 }
 
 /* Per-track unlocked glow tints */
 .track-node-frontend.node-unlocked {
-  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.3), 0 4px 20px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3), 0 4px 20px rgba(59, 130, 246, 0.2);
 }
 .track-node-backend.node-unlocked {
   box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.3), 0 4px 20px rgba(16, 185, 129, 0.2);
@@ -508,7 +508,7 @@
   height: 100vh;
   background: var(--surface);
   border-left: 1px solid var(--border);
-  box-shadow: -8px 0 32px rgba(8, 11, 26, 0.6), -4px 0 16px rgba(124, 58, 237, 0.1);
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.6), -4px 0 16px rgba(59, 130, 246, 0.1);
   z-index: 200;
   display: flex;
   flex-direction: column;
@@ -525,7 +525,7 @@
 .inspector-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(8, 11, 26, 0.5);
+  background: rgba(0, 0, 0, 0.5);
   z-index: 199;
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
@@ -745,7 +745,7 @@
     border-left: none;
     border-top: 1px solid var(--border);
     border-radius: 20px 20px 0 0;
-    box-shadow: 0 -8px 32px rgba(8, 11, 26, 0.7);
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.7);
     animation: slideUp 0.22s cubic-bezier(0.4, 0, 0.2, 1);
   }
 

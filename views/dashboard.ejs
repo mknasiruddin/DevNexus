@@ -10,10 +10,10 @@
     react: '#61dafb',
     docs: '#8b949e'
   };
-  const effectiveSkills = (Array.isArray(locals.userSkills) && userSkills.length > 0)
-    ? userSkills
-    : ['JavaScript', 'Python', 'TypeScript'];
-  const expLevel = (user && user.experience_level) ? user.experience_level : 'Beginner';
+  const effectiveSkills = Array.isArray(locals.userSkills) ? userSkills : [];
+  const isInspectingOther = Boolean(locals.isInspecting);
+  const profileOwner = locals.inspectedUser || user;
+  const expLevel = (profileOwner && profileOwner.experience_level && (isInspectingOther || profileOwner.is_onboarded || effectiveSkills.length > 0)) ? profileOwner.experience_level : 'Unconfigured';
 %>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -40,11 +40,31 @@
         <span class="disclosure-badge">Live Integration</span>
         <span>Connected to <strong>GitHub REST API v3</strong>. Bookmarks and user data stored in persistent SQLite.</span>
       </div>
-      <div>
-        <% if (rateLimit) { %>
-          <span style="font-size: 12px; font-family: var(--mono);" title="Core / Search REST rate limits">
-            API Quota: <strong><%= rateLimit.remaining %></strong> / <%= rateLimit.limit %> remaining
-            <% if (rateLimit.resetInMinutes > 0) { %>(resets in <%= rateLimit.resetInMinutes %>m)<% } %>
+      <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; justify-content:flex-end;">
+        <% const cacheInfo = locals.devnexusCacheInfo || {}; %>
+        <span id="devnexus-cache-status" style="font-size: 11.5px; font-family: var(--mono); color: var(--muted);" title="DevNexus local SQLite cache &amp; sync state (separate from GitHub API quota)">
+          DevNexus Cache:
+          <% if (cacheInfo.issueSearchStale || cacheInfo.profileStale) { %>
+            <strong style="color: #fbbf24;">Stale Preserved</strong>
+          <% } else if (cacheInfo.issueSearchCached || cacheInfo.profileCached) { %>
+            <strong style="color: #4ade80;">Warm Hit</strong>
+          <% } else { %>
+            <strong style="color: var(--text);">Active</strong>
+          <% } %>
+        </span>
+        <% if (rateLimit && rateLimit.limit !== null && rateLimit.limit !== undefined && rateLimit.remaining !== null && rateLimit.remaining !== undefined) { %>
+          <span id="github-quota-status" style="font-size: 12px; font-family: var(--mono);" title="Actual GitHub REST API quota from response headers">
+            GitHub Quota (<%= rateLimit.resource || 'core' %>):
+            <strong style="<%= rateLimit.remaining === 0 ? 'color:#f85149;' : '' %>"><%= rateLimit.remaining %></strong> / <%= rateLimit.limit %>
+            <% if (rateLimit.resetAtIso) { %>
+              &bull; resets <%= new Date(rateLimit.resetAtIso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) %><% if (rateLimit.resetInMinutes > 0) { %> (~<%= rateLimit.resetInMinutes %>m)<% } %>
+            <% } else if (rateLimit.resetInMinutes > 0) { %>
+              (resets in <%= rateLimit.resetInMinutes %>m)
+            <% } %>
+          </span>
+        <% } else { %>
+          <span id="github-quota-status" style="font-size: 12px; font-family: var(--mono); color: var(--muted);" title="GitHub API headers unavailable on cached/offline responses">
+            GitHub Quota: unavailable (using local cache)
           </span>
         <% } %>
       </div>
@@ -68,8 +88,11 @@
           <div style="display:flex; align-items:center; gap:8px;">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             <div>
-              <strong>GitHub API Rate Limit Reached:</strong>
-              <%= issueErrorMessage || 'Unauthenticated requests are limited by GitHub. The limit will reset shortly.' %>
+              <strong>GitHub API <%= (locals.devnexusCacheInfo && locals.devnexusCacheInfo.rateLimitType === 'secondary') ? 'Secondary ' : '' %>Rate Limit Reached:</strong>
+              <%= issueErrorMessage || 'GitHub API rate limit reached. Preserving your last cached issues and metrics until reset.' %>
+              <% if (locals.devnexusCacheInfo && locals.devnexusCacheInfo.rateLimitResetAtIso) { %>
+                (Reset at <strong><%= new Date(locals.devnexusCacheInfo.rateLimitResetAtIso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) %></strong>)
+              <% } %>
               <% if (!user && !isOAuthConfigured) { %>
                 Sign in with GitHub or configure <code>GITHUB_TOKEN</code> in <code>.env</code> for 5,000 requests/hour.
               <% } %>
@@ -78,7 +101,7 @@
         </div>
       <% } else if (locals.issueError) { %>
         <div class="error-banner" role="alert">
-          <span><strong>API Notice:</strong> <%= issueErrorMessage || 'Unable to retrieve live issues. Please verify your connection.' %></span>
+          <span><strong>GitHub API Notice:</strong> <%= issueErrorMessage || 'GitHub issue discovery is temporarily unavailable. Cached dashboard metrics remain intact.' %></span>
         </div>
       <% } %>
 
@@ -87,28 +110,24 @@
         <aside class="profile-card" aria-label="Developer Profile">
           <div class="profile-header">
             <img class="profile-avatar-lg" src="<%= profile.avatar_url %>" alt="<%= profile.name || profile.login %> avatar">
-            <h2 class="profile-name-lg"><%= (targetUsername === user.username && user.name) ? user.name : (profile.name || profile.login) %></h2>
+            <h2 class="profile-name-lg"><%= (!isInspectingOther && user && user.name) ? user.name : (profile.name || profile.login) %></h2>
             <a href="https://github.com/<%= profile.login %>" target="_blank" rel="noopener noreferrer" class="profile-handle" title="View profile on GitHub">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
               @<%= profile.login %>
             </a>
-            <p class="profile-bio"><%= (targetUsername === user.username && user.bio) ? user.bio : (profile.bio || 'Open-source software contributor exploring impactful community projects.') %></p>
+            <p class="profile-bio"><%= (!isInspectingOther && user && user.bio) ? user.bio : (profile.bio || 'Open source software contributor exploring impactful community projects.') %></p>
 
             <% if (user) { %>
               <div style="margin-top: 10px;">
                 <span class="level-badge intermediate" title="Experience Level">
                   <span class="status-dot online"></span> <%= expLevel %> Contributor
                 </span>
-                <div style="margin-top: 10px; display: flex; gap: 6px; justify-content: center; flex-wrap: wrap;">
-                  <a href="/onboarding?edit=1" class="btn btn-sm" style="font-size: 11.5px;">Edit Profile &amp; Skills</a>
-                  <a href="/auth/logout" class="btn btn-sm" style="font-size: 11.5px;">Sign Out</a>
-                </div>
-              </div>
-            <% } else { %>
-              <div style="margin-top: 10px;">
-                <a href="/auth/github" class="btn btn-sm btn-primary" style="width: 100%;">
-                  Sign In with GitHub
-                </a>
+                <% if (!isInspectingOther) { %>
+                  <div style="margin-top: 10px; display: flex; gap: 6px; justify-content: center; flex-wrap: wrap;">
+                    <a href="/onboarding?edit=1" class="btn btn-sm" style="font-size: 11.5px;">Edit Profile &amp; Skills</a>
+                    <a href="/auth/logout" class="btn btn-sm" style="font-size: 11.5px;">Sign Out</a>
+                  </div>
+                <% } %>
               </div>
             <% } %>
           </div>
@@ -117,7 +136,7 @@
           <form action="/dashboard" method="GET" style="margin-bottom: 16px;">
             <label for="inspect-username-input" style="display:block; font-size:11px; font-weight:600; color:var(--muted); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.04em;">Inspect GitHub Handle</label>
             <div style="display:flex; gap:6px;">
-              <input id="inspect-username-input" type="text" name="username" value="<%= targetUsername %>" placeholder="your-github-username" aria-label="GitHub username to inspect" style="flex:1; height:32px; padding:0 8px; font-size:12px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); outline:none;">
+              <input id="inspect-username-input" type="text" name="username" value="<%= targetUsername %>" placeholder="your-github-username" aria-label="GitHub username to inspect" style="flex:1; min-width:0; height:32px; padding:0 8px; font-size:12px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); outline:none;">
               <button type="submit" class="btn btn-sm">Inspect</button>
             </div>
             <% if (targetUsername !== user.username) { %>
@@ -144,16 +163,24 @@
 
           <div class="skills-section">
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-              <h4 style="margin:0;">Declared Skills</h4>
-              <a href="/onboarding?edit=1" style="font-size:11.5px; color:var(--link); text-decoration:none;">Customize</a>
+              <h4 style="margin:0;"><%= isInspectingOther ? `@${targetUsername} Skills` : 'Declared Skills' %></h4>
+              <% if (!isInspectingOther) { %>
+                <a href="/onboarding?edit=1" style="font-size:11.5px; color:var(--link); text-decoration:none;">Customize</a>
+              <% } %>
             </div>
             <div class="skills-cloud">
-              <% effectiveSkills.forEach(function(skill) {
-                   const sName = typeof skill === 'string' ? skill : (skill.name || 'Code');
-                   const sColor = skillDotColors[sName.toLowerCase()] || '#818CF8';
-              %>
-                <span class="skill-chip"><span class="skill-dot" style="background-color: <%= sColor %>;"></span><%= sName %></span>
-              <% }); %>
+              <% if (effectiveSkills.length > 0) { %>
+                <% effectiveSkills.forEach(function(skill) {
+                     const sName = typeof skill === 'string' ? skill : (skill.name || 'Code');
+                     const sColor = skillDotColors[sName.toLowerCase()] || '#818CF8';
+                %>
+                  <span class="skill-chip"><span class="skill-dot" style="background-color: <%= sColor %>;"></span><%= sName %></span>
+                <% }); %>
+              <% } else { %>
+                <span style="font-size:12px; color:var(--muted);">
+                  <%= isInspectingOther ? 'No DevNexus skills recorded for this GitHub handle.' : 'No skills declared yet — click Customize to add yours.' %>
+                </span>
+              <% } %>
             </div>
           </div>
 
@@ -204,11 +231,18 @@
         <!-- ======================= MAIN CONTENT ======================= -->
         <section class="dash-content-area">
           <!-- METRIC CARDS DERIVED FROM REAL DATA -->
+          <%
+            const ghSync = locals.syncState || null;
+            const totalRepoStat = ghSync ? ghSync.totalRepos : profile.public_repos;
+            const publicRepoStat = ghSync ? ghSync.publicRepos : profile.public_repos;
+          %>
           <div class="metrics-row" aria-label="Live Developer Statistics">
             <div class="metric-card">
               <div class="metric-title">Public Repositories</div>
-              <div class="metric-val"><%= profile.public_repos %></div>
-              <div class="metric-sub">Sourced from GitHub profile</div>
+              <div class="metric-val" id="metric-public-repos"><%= publicRepoStat %></div>
+              <div class="metric-sub">
+                <%= ghSync && !isInspectingOther ? `${totalRepoStat} total (${ghSync.privateRepos} private)` : 'Sourced from GitHub profile' %>
+              </div>
             </div>
             <div class="metric-card">
               <div class="metric-title">Persistent Bookmarks</div>
@@ -222,10 +256,118 @@
             </div>
             <div class="metric-card">
               <div class="metric-title">Contribution Readiness</div>
-              <div class="metric-val" style="color:var(--accent-text);">
-                <%= locals.readinessScore ? readinessScore.score : 75 %>%
+              <% const metricRs = locals.readinessScore || null; %>
+              <div class="metric-val" id="metric-readiness-val" style="color:var(--accent-text);">
+                <%= (metricRs && metricRs.isSufficientData) ? `${metricRs.score}%` : '--%' %>
               </div>
-              <div class="metric-sub"><%= locals.readinessScore ? readinessScore.readinessLevel : 'Rule-based score' %></div>
+              <div class="metric-sub" id="metric-readiness-sub"><%= metricRs ? metricRs.readinessLevel : 'Insufficient Data' %></div>
+            </div>
+          </div>
+
+          <!-- ======================= GITHUB ACTIVITY SYNCHRONIZATION ======================= -->
+          <div class="dash-card" id="github-sync-card" aria-label="GitHub Activity Synchronization">
+            <div class="dash-card-header">
+              <div>
+                <h3 class="dash-card-title">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                  GitHub Activity Synchronization
+                  <% if (isInspectingOther) { %>
+                    <span style="font-size:12px; font-weight:500; color:var(--muted);">(@<%= targetUsername %> public snapshot)</span>
+                  <% } %>
+                </h3>
+                <div id="github-last-synced" style="font-size:12px; color:var(--muted); margin-top:4px;">
+                  <% if (ghSync && ghSync.lastSyncedAt) { %>
+                    Last synchronized: <strong style="color:var(--text);"><%= new Date(ghSync.lastSyncedAt).toLocaleString() %></strong>
+                    &bull; Counting window: Last <%= ghSync.commitPeriodDays || 90 %> days
+                  <% } else if (locals.isGithubConnected) { %>
+                    Connected GitHub ID &bull; Initial synchronization pending
+                  <% } else { %>
+                    <%= isInspectingOther ? 'Public GitHub profile overview' : 'Connect your GitHub account via OAuth for automatic synchronization' %>
+                  <% } %>
+                </div>
+              </div>
+
+              <% if (!isInspectingOther) { %>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                  <% if (locals.isGithubConnected) { %>
+                    <button type="button" id="sync-github-btn" class="btn btn-sm btn-primary">
+                      <span class="sync-btn-label">Sync GitHub</span>
+                    </button>
+                  <% } else { %>
+                    <a href="/auth/github" class="btn btn-sm btn-primary">
+                      Connect GitHub via OAuth
+                    </a>
+                  <% } %>
+                </div>
+              <% } %>
+            </div>
+
+            <div class="dash-card-body">
+              <div id="github-sync-feedback"
+                   style="<%= (ghSync && (ghSync.lastSyncStatus === 'error' || ghSync.lastSyncStatus === 'rate_limited') && ghSync.lastSyncError) ? '' : 'display:none;' %> margin-bottom:14px; padding:10px 14px; border-radius:8px; font-size:12.5px; border:1px solid rgba(245,158,11,0.35); background:rgba(245,158,11,0.12); color:#fbbf24;"
+                   role="status">
+                <%= (ghSync && ghSync.lastSyncError) ? ghSync.lastSyncError : '' %>
+              </div>
+
+              <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(145px, 1fr)); gap:12px; margin-bottom:16px;">
+                <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px;">
+                  <div style="font-size:11.5px; color:var(--muted); margin-bottom:4px;">Total / Public Repos</div>
+                  <div id="sync-stat-repos" style="font-size:20px; font-weight:700; color:var(--text);">
+                    <%= totalRepoStat %> <span style="font-size:12px; font-weight:500; color:var(--muted);">(<%= publicRepoStat %> public)</span>
+                  </div>
+                </div>
+                <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px;">
+                  <div style="font-size:11.5px; color:var(--muted); margin-bottom:4px;">Total Commits (90d)</div>
+                  <div id="sync-stat-commits" style="font-size:20px; font-weight:700; color:var(--text);">
+                    <%= ghSync ? ghSync.totalCommits : 0 %>
+                  </div>
+                </div>
+                <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px;">
+                  <div style="font-size:11.5px; color:var(--muted); margin-bottom:4px;">Pull Requests</div>
+                  <div id="sync-stat-prs" style="font-size:20px; font-weight:700; color:var(--text);">
+                    <%= ghSync ? ghSync.prsCreated : 0 %> <span style="font-size:12px; font-weight:500; color:#4ade80;">(<%= ghSync ? ghSync.prsMerged : 0 %> merged)</span>
+                  </div>
+                </div>
+                <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px;">
+                  <div style="font-size:11.5px; color:var(--muted); margin-bottom:4px;">Issues Created</div>
+                  <div id="sync-stat-issues" style="font-size:20px; font-weight:700; color:var(--text);">
+                    <%= ghSync ? ghSync.issuesCreated : 0 %> <span style="font-size:12px; font-weight:500; color:var(--muted);">(<%= ghSync ? ghSync.issuesClosed : 0 %> closed)</span>
+                  </div>
+                </div>
+                <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px;">
+                  <div style="font-size:11.5px; color:var(--muted); margin-bottom:4px;">Contributions (90d)</div>
+                  <div id="sync-stat-contribs" style="font-size:20px; font-weight:700; color:var(--accent-text);">
+                    <%= ghSync ? ghSync.contributionsCount : 0 %>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Language Distribution -->
+              <div id="sync-language-dist">
+                <div style="font-size:12px; font-weight:600; color:var(--muted); margin-bottom:8px;">
+                  Repository Language Distribution
+                </div>
+                <% const langDist = (ghSync && Array.isArray(ghSync.languageDistribution)) ? ghSync.languageDistribution : []; %>
+                <% if (langDist.length > 0) { %>
+                  <div style="display:flex; height:8px; border-radius:999px; overflow:hidden; background:var(--bg); border:1px solid var(--border); margin-bottom:10px;">
+                    <% langDist.forEach(function(item) { %>
+                      <div style="width:<%= Math.max(2, item.percentage) %>%; background-color:<%= item.color || '#818CF8' %>;" title="<%= item.language %>: <%= item.percentage %>% (<%= item.count %> repos)"></div>
+                    <% }); %>
+                  </div>
+                  <div style="display:flex; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--muted);">
+                    <% langDist.forEach(function(item) { %>
+                      <span style="display:inline-flex; align-items:center; gap:6px;">
+                        <span style="width:8px; height:8px; border-radius:50%; background-color:<%= item.color || '#818CF8' %>;"></span>
+                        <strong style="color:var(--text);"><%= item.language %></strong> <%= item.percentage %>% (<%= item.count %>)
+                      </span>
+                    <% }); %>
+                  </div>
+                <% } else { %>
+                  <div style="font-size:12.5px; color:var(--muted);">
+                    <%= locals.isGithubConnected ? 'Click "Sync GitHub" to compute your repository language distribution.' : 'Language breakdown will appear once a GitHub account is synced.' %>
+                  </div>
+                <% } %>
+              </div>
             </div>
           </div>
 
@@ -239,39 +381,52 @@
                 <h3 class="dash-card-title">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
                   Contribution Readiness Score &amp; Skill Alignment
+                  <% if (isInspectingOther) { %>
+                    <span style="font-size:12px; font-weight:500; color:var(--muted);">(@<%= targetUsername %>)</span>
+                  <% } %>
                 </h3>
                 <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                   <a href="/roadmap" class="btn btn-sm">
                     14-Stage Roadmap (<%= rmProg.completedCount %>/<%= rmProg.totalStages %>)
                   </a>
-                  <a href="/onboarding?edit=1" class="btn btn-sm btn-primary">
-                    Update Skills &amp; Level
-                  </a>
+                  <% if (!isInspectingOther) { %>
+                    <a href="/onboarding?edit=1" class="btn btn-sm btn-primary">
+                      Update Skills &amp; Level
+                    </a>
+                  <% } %>
                 </div>
               </div>
 
               <div class="dash-card-body">
+                <div id="readiness-issue-context" style="margin-bottom:12px; padding:8px 12px; border-radius:8px; background:var(--bg); border:1px solid var(--border); font-size:12px; display:<%= rs.selectedIssue ? 'flex' : 'none' %>; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                  <span>Inspecting issue: <strong id="readiness-issue-title"><%= rs.selectedIssue ? rs.selectedIssue.title : '' %></strong></span>
+                  <button type="button" id="reset-issue-readiness-btn" class="btn btn-sm" style="font-size:11px; padding:3px 8px;">Reset to Overall</button>
+                </div>
+
                 <div class="readiness-grid">
                   <!-- Left: Visual Score Box -->
                   <div class="readiness-score-box">
                     <div style="font-size:11.5px; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); font-weight:700; margin-bottom:6px;">
                       Readiness Score
                     </div>
-                    <div class="readiness-score-num" id="readiness-score-value"><%= rs.score %><span style="font-size:18px; color:var(--muted);">/100</span></div>
-                    <div class="readiness-tier-badge <%= rs.badgeClass || 'medium' %>" id="readiness-level-badge">
+                    <div class="readiness-score-num" id="readiness-score-value"><%= rs.isSufficientData ? rs.score : '--' %><span style="font-size:18px; color:var(--muted);">/100</span></div>
+                    <div class="readiness-tier-badge <%= rs.badgeClass || 'insufficient' %>" id="readiness-level-badge">
                       <%= rs.readinessLevel %>
                     </div>
                     <div class="readiness-bar-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<%= rs.score %>">
-                      <div class="readiness-bar-fill" style="width: <%= rs.score %>%;"></div>
+                      <div class="readiness-bar-fill" id="readiness-progress-fill" style="width: <%= rs.isSufficientData ? rs.score : 0 %>%;"></div>
                     </div>
                     <div style="margin-top:10px; font-size:12px; color:var(--muted);">
-                      Experience Tier: <strong style="color:var(--text);"><%= rs.experienceLevel %></strong>
+                      Experience Tier: <strong id="readiness-exp-tier" style="color:var(--text);"><%= rs.experienceLevel %></strong>
+                    </div>
+                    <div id="readiness-data-status" style="margin-top:6px; font-size:11px; color:<%= rs.dataStatus === 'insufficient' ? '#f59e0b' : (rs.dataStatus === 'stale_cached' ? '#fbbf24' : '#4ade80') %>;">
+                      Data Status: <%= rs.dataStatus === 'insufficient' ? 'Insufficient Data' : (rs.dataStatus === 'stale_cached' ? 'Preserved Stale GitHub Cache' : 'Verified Profile & GitHub Data') %>
                     </div>
                   </div>
 
                   <!-- Right: 4-Factor Breakdown, Matched/Missing Skills & Actionable Suggestions -->
                   <div>
-                    <div class="readiness-factors">
+                    <div class="readiness-factors" id="readiness-factors-list">
                       <% Object.keys(rs.breakdown || {}).forEach(function(bKey) {
                            const factor = rs.breakdown[bKey];
                       %>
@@ -292,43 +447,55 @@
                     <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:12px; font-size:12.5px;">
                       <div>
                         <strong style="color:var(--text); display:inline-block; margin-right:6px;">Matched Skills:</strong>
-                        <% if (rs.matchedSkills && rs.matchedSkills.length > 0) { %>
-                          <% rs.matchedSkills.forEach(function(ms) { %>
-                            <span class="readiness-skill-pill matched">&#10003; <%= ms %></span>
-                          <% }); %>
-                        <% } else if (rs.declaredSkills && rs.declaredSkills.length > 0) { %>
-                          <% rs.declaredSkills.slice(0, 4).forEach(function(ds) { %>
-                            <span class="readiness-skill-pill matched"><%= ds %> (Declared)</span>
-                          <% }); %>
-                        <% } else { %>
-                          <span style="color:var(--muted);">None declared yet</span>
-                        <% } %>
+                        <span id="readiness-matched-skills">
+                          <% if (rs.matchedSkills && rs.matchedSkills.length > 0) { %>
+                            <% rs.matchedSkills.forEach(function(ms) { %>
+                              <span class="readiness-skill-pill matched">&#10003; <%= ms %></span>
+                            <% }); %>
+                          <% } else if (rs.verifiedRepoSkills && rs.verifiedRepoSkills.length > 0) { %>
+                            <% rs.verifiedRepoSkills.forEach(function(vs) { %>
+                              <span class="readiness-skill-pill matched">&#10003; <%= vs %> (Repo)</span>
+                            <% }); %>
+                          <% } else { %>
+                            <span style="color:var(--muted);">None matched with current repositories/issues yet</span>
+                          <% } %>
+                        </span>
                       </div>
 
                       <div>
                         <strong style="color:var(--text); display:inline-block; margin-right:6px;">Missing / Unmatched Issue Skills:</strong>
-                        <% if (rs.missingSkills && rs.missingSkills.length > 0) { %>
-                          <% rs.missingSkills.forEach(function(mis) { %>
-                            <span class="readiness-skill-pill missing">+ <%= mis %></span>
-                          <% }); %>
-                        <% } else { %>
-                          <span style="color:#4ade80;">No missing skill gaps detected for current issues</span>
-                        <% } %>
+                        <span id="readiness-missing-skills">
+                          <% if (rs.missingSkills && rs.missingSkills.length > 0) { %>
+                            <% rs.missingSkills.forEach(function(mis) { %>
+                              <span class="readiness-skill-pill missing">+ <%= mis %></span>
+                            <% }); %>
+                          <% } else if (rs.dataAvailability && !rs.dataAvailability.hasGithubData) { %>
+                            <span style="color:var(--muted);">GitHub data unavailable to detect skill gaps</span>
+                          <% } else { %>
+                            <span style="color:#4ade80;">No missing skill gaps detected for current scope</span>
+                          <% } %>
+                        </span>
                       </div>
                     </div>
 
                     <!-- Actionable Suggestions -->
                     <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px 14px; font-size:12.5px;">
                       <strong style="color:var(--text); display:block; margin-bottom:4px;">Suggestions to Improve Readiness:</strong>
-                      <ul style="margin:0; padding-left:18px; color:var(--muted); line-height:1.55;">
+                      <ul id="readiness-suggestions-list" style="margin:0; padding-left:18px; color:var(--muted); line-height:1.55;">
                         <% (rs.suggestions || []).forEach(function(sug) { %>
                           <li><%= sug %></li>
                         <% }); %>
                       </ul>
                       <div style="margin-top:6px; font-size:11px; color:var(--muted); border-top:1px solid var(--border); padding-top:6px;">
                         <%= rs.formulaExplanation %>
+                        <div id="readiness-accounting" style="margin-top:4px;">
+                          <strong>Score Accounting:</strong> <%= rs.pointsAwarded ?? rs.score %> pts awarded &bull; <%= rs.pointsDeducted ?? (100 - rs.score) %> pts deducted across 4 factors (<%= rs.dataAvailability ? rs.dataAvailability.sourceLabel : 'Live / Cached' %>).
+                        </div>
+                        <div id="readiness-unverified" style="<%= (rs.unverifiedData && rs.unverifiedData.length > 0) ? '' : 'display:none;' %> margin-top:4px; color:#f59e0b;">
+                          <strong>Missing / Unverified Inputs:</strong> <%= (rs.unverifiedData || []).join(' ') %>
+                        </div>
                         <div style="margin-top:4px; color:var(--text-muted, #94a3b8);">
-                          <strong>Note:</strong> <%= rs.assessmentDisclaimer || 'Estimated readiness assessment based on rule-based profile and issue metadata — not a guarantee of contribution acceptance.' %>
+                          <strong>Disclaimer:</strong> <%= rs.assessmentDisclaimer || 'Estimated readiness assessment calculated deterministically from your saved profile and real issue metadata — not a guarantee of contribution acceptance.' %>
                         </div>
                       </div>
                     </div>
@@ -429,11 +596,17 @@
                           <%= issue.compatibilityScore %>% Match
                         </div>
                         <% if (issue.readiness) { %>
-                          <div class="compat-badge <%= issue.readiness.score >= 75 ? 'high' : 'medium' %>"
-                               style="margin-top:4px; font-size:11px;"
-                               title="<%= issue.readiness.readinessLevel %> — <%= issue.readiness.assessmentDisclaimer || 'Estimated readiness assessment' %>">
-                            Readiness: <%= issue.readiness.score %>%
-                          </div>
+                          <button type="button"
+                                  class="compat-badge <%= issue.readiness.isSufficientData && issue.readiness.score >= 75 ? 'high' : 'medium' %> inspect-issue-readiness-btn"
+                                  style="margin-top:4px; font-size:11px; cursor:pointer;"
+                                  data-issue-url="<%= issue.htmlUrl %>"
+                                  data-username="<%= targetUsername %>"
+                                  data-label="<%= activeLabel %>"
+                                  data-language="<%= activeLanguage %>"
+                                  data-query="<%= activeQuery %>"
+                                  title="Click to inspect full 4-factor readiness breakdown for this issue (<%= issue.readiness.readinessLevel %>)">
+                            <%= issue.readiness.isSufficientData ? `Readiness: ${issue.readiness.score}%` : 'Readiness: Insufficient Data' %>
+                          </button>
                         <% } %>
 
                         <div class="issue-actions">
@@ -583,16 +756,16 @@
 </div>
 <!-- END PERSONALIZED RECOMMENDATIONS -->
 
-          <div class="dash-card">
+          <div class="dash-card" id="github-synced-repos-card">
             <div class="dash-card-header">
               <h3 class="dash-card-title">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-                Public Repositories for @<%= targetUsername %>
+                <%= (!isInspectingOther && locals.syncState) ? 'Recently Updated Repositories' : `Public Repositories for @${targetUsername}` %>
               </h3>
             </div>
-            <div class="dash-card-body">
+            <div class="dash-card-body" id="synced-repos-body">
               <% if (repos.length === 0) { %>
-                <p style="color:var(--muted); font-size:13.5px;">No public repositories available for this account.</p>
+                <p style="color:var(--muted); font-size:13.5px;">No repositories available for this account.</p>
               <% } else { %>
                 <div class="repo-grid">
                   <% repos.forEach(function(r) { %>
@@ -601,7 +774,12 @@
                         <a href="<%= r.htmlUrl %>" target="_blank" rel="noopener noreferrer" class="repo-card-title">
                           <%= r.name %>
                         </a>
-                        <span>★ <%= r.stars %></span>
+                        <div style="display:flex; align-items:center; gap:6px;">
+                          <% if (r.isPrivate && !isInspectingOther) { %>
+                            <span style="font-size:10.5px; padding:2px 6px; border-radius:4px; border:1px solid var(--border); color:var(--muted);">Private</span>
+                          <% } %>
+                          <span>★ <%= r.stars %></span>
+                        </div>
                       </div>
                       <p class="repo-card-desc"><%= r.description %></p>
                       <% if (r.health) { %>
@@ -611,7 +789,7 @@
                         </div>
                       <% } %>
                       <div class="repo-card-foot" style="display:flex; justify-content:space-between; align-items:center;">
-                        <span><%= r.language %></span>
+                        <span><%= r.language %><% if (r.pushedAt || r.updatedAt) { %> &bull; <%= new Date(r.pushedAt || r.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) %><% } %></span>
                         <a href="<%= r.htmlUrl %>" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline">
                           View Repo &rarr;
                         </a>
@@ -623,22 +801,59 @@
             </div>
           </div>
 
-          <!-- REAL RECENT ACTIVITY -->
-          <div class="dash-card">
+          <!-- SYNCHRONIZED GITHUB ACTIVITY TIMELINE -->
+          <div class="dash-card" id="github-activity-timeline-card">
             <div class="dash-card-header">
               <h3 class="dash-card-title">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                Recent Public GitHub Activity
+                Recent GitHub Activity Timeline
               </h3>
+              <% if (!isInspectingOther && locals.isGithubConnected) { %>
+                <div class="tab-group" id="activity-filter-tabs" role="tablist">
+                  <% const actFilter = locals.activeActivityFilter || 'all'; %>
+                  <button type="button" class="tab-btn activity-filter-btn <%= actFilter === 'all' ? 'active' : '' %>" data-category="all">All</button>
+                  <button type="button" class="tab-btn activity-filter-btn <%= actFilter === 'commit' ? 'active' : '' %>" data-category="commit">Commits</button>
+                  <button type="button" class="tab-btn activity-filter-btn <%= actFilter === 'repo' ? 'active' : '' %>" data-category="repo">Repos</button>
+                  <button type="button" class="tab-btn activity-filter-btn <%= actFilter === 'pr' ? 'active' : '' %>" data-category="pr">PRs</button>
+                  <button type="button" class="tab-btn activity-filter-btn <%= actFilter === 'issue' ? 'active' : '' %>" data-category="issue">Issues</button>
+                  <button type="button" class="tab-btn activity-filter-btn <%= actFilter === 'release' ? 'active' : '' %>" data-category="release">Releases</button>
+                </div>
+              <% } %>
             </div>
-            <div class="dash-card-body">
-              <% if (events.length === 0) { %>
-                <p style="color:var(--muted); font-size:13.5px;">No public activity records found in the recent event stream.</p>
+            <div class="dash-card-body" id="synced-activity-body">
+              <% const timelineItems = (Array.isArray(locals.syncedActivities) && syncedActivities.length > 0) ? syncedActivities : null; %>
+              <% if (timelineItems) { %>
+                <ul class="activity-list">
+                  <% timelineItems.forEach(function(act) { %>
+                    <li class="activity-item">
+                      <div class="activity-icon <%= act.category === 'pr' ? 'merged' : act.category === 'commit' || act.category === 'repo' ? 'opened' : 'comment' %>">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+                      </div>
+                      <div class="activity-content">
+                        <div class="activity-title">
+                          <a href="<%= act.targetUrl || act.repoUrl %>" target="_blank" rel="noopener noreferrer" style="color:var(--text);">
+                            <%= act.title %>
+                          </a>
+                          <% if (act.isPrivate && !isInspectingOther) { %>
+                            <span style="font-size:10.5px; margin-left:6px; padding:1px 6px; border-radius:4px; border:1px solid var(--border); color:var(--muted);">Private</span>
+                          <% } %>
+                        </div>
+                        <div class="activity-meta">
+                          <a href="<%= act.repoUrl %>" target="_blank" rel="noopener noreferrer" style="color:var(--link);"><%= act.repoName %></a>
+                          &bull; <%= act.relativeTime || new Date(act.eventTimestamp).toLocaleDateString() %>
+                          &bull; <%= new Date(act.eventTimestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) %>
+                        </div>
+                      </div>
+                    </li>
+                  <% }); %>
+                </ul>
+              <% } else if (events.length === 0) { %>
+                <p style="color:var(--muted); font-size:13.5px;">No activity records found in the recent GitHub stream.</p>
               <% } else { %>
                 <ul class="activity-list">
                   <% events.forEach(function(ev) { %>
                     <li class="activity-item">
-               <!-- REAL GITHUB REPOSITORIES -->       <div class="activity-icon <%= ev.type === 'pr' ? 'merged' : ev.type === 'push' ? 'opened' : 'comment' %>">
+                      <div class="activity-icon <%= ev.type === 'pr' ? 'merged' : ev.type === 'push' ? 'opened' : 'comment' %>">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
                       </div>
                       <div class="activity-content">

@@ -553,6 +553,404 @@ async function runTests() {
     assert.ok(skillTreeJson.json.tree.xp, 'API returns computed user XP');
     pass('JSON API endpoint (GET /api/skill-tree) verified');
 
+    // =========================================================
+    // 5. END-TO-END AUDIT REGRESSION TESTS (TESTS 1-6)
+    // =========================================================
+    console.log('\n--- 5. End-to-End Audit Regression Tests ---');
+
+    // Test 1: User Isolation & No Score Mixing (Unit + HTTP Inspect Flow + Cache)
+    await request('/auth/onboarding', {
+      method: 'POST',
+      cookie: cookieA,
+      body: new URLSearchParams({
+        skills: JSON.stringify(['Java', 'C', 'HTML']),
+        experience_level: 'Beginner'
+      })
+    });
+    await request('/api/roadmap/reset', { method: 'POST', cookie: cookieA });
+    await request('/api/roadmap/step', { method: 'POST', cookie: cookieA, body: { stepNumber: 1, completed: true } });
+    await request('/api/roadmap/step', { method: 'POST', cookie: cookieA, body: { stepNumber: 2, completed: true } });
+
+    await request('/auth/onboarding', {
+      method: 'POST',
+      cookie: cookieB,
+      body: new URLSearchParams({
+        skills: JSON.stringify(['Python', 'React', 'Node.js', 'TypeScript']),
+        experience_level: 'Advanced'
+      })
+    });
+    await request('/api/roadmap/reset', { method: 'POST', cookie: cookieB });
+    for (let s = 1; s <= 10; s++) {
+      await request('/api/roadmap/step', { method: 'POST', cookie: cookieB, body: { stepNumber: s, completed: true } });
+    }
+
+    const rA1 = await request('/dashboard/api/readiness', { cookie: cookieA, headers: { Accept: 'application/json' } });
+    const rB1 = await request('/dashboard/api/readiness', { cookie: cookieB, headers: { Accept: 'application/json' } });
+    const rAInspectB = await request(`/dashboard/api/readiness?username=${encodeURIComponent(testUserB)}`, {
+      cookie: cookieA,
+      headers: { Accept: 'application/json' }
+    });
+    const rAAgain = await request('/dashboard/api/readiness', { cookie: cookieA, headers: { Accept: 'application/json' } });
+    const rAInspectUnknown = await request('/dashboard/api/readiness?username=external_unregistered_dev_999', {
+      cookie: cookieA,
+      headers: { Accept: 'application/json' }
+    });
+
+    assert.strictEqual(rA1.status, 200);
+    assert.strictEqual(rB1.status, 200);
+    assert.strictEqual(rA1.json.readiness.experienceLevel, 'Beginner');
+    assert.strictEqual(rB1.json.readiness.experienceLevel, 'Advanced');
+    assert.strictEqual(rA1.json.roadmapProgress.completedCount, 2);
+    assert.strictEqual(rB1.json.roadmapProgress.completedCount, 10);
+    assert.strictEqual(rAInspectB.json.readiness.score, rB1.json.readiness.score, 'Inspecting User B must return User B score, never User A');
+    assert.strictEqual(rAInspectB.json.readiness.experienceLevel, 'Advanced');
+    assert.strictEqual(rAAgain.json.readiness.score, rA1.json.readiness.score, 'User A readiness score must remain isolated and unchanged after inspecting User B');
+    assert.strictEqual(rAInspectUnknown.json.readiness.declaredSkills.length, 0, 'External unregistered user must never inherit logged-in user skills');
+    assert.strictEqual(rAInspectUnknown.json.roadmapProgress.completedCount, 0, 'External unregistered user must never inherit logged-in user roadmap');
+
+    const issuesA = await request('/dashboard/api/issues?language=python&page=1', { cookie: cookieA, headers: { Accept: 'application/json' } });
+    const issuesB = await request('/dashboard/api/issues?language=python&page=1', { cookie: cookieB, headers: { Accept: 'application/json' } });
+    assert.strictEqual(issuesA.json.readinessScore.score, (await request('/dashboard/api/issues?language=python&page=1', { cookie: cookieA, headers: { Accept: 'application/json' } })).json.readinessScore.score);
+    assert.notStrictEqual(issuesA.json.readinessScore.score, issuesB.json.readinessScore.score, 'Cached issues endpoint must isolate User A vs User B readiness scores');
+    pass(`Test 1 User Isolation verified (User A=${rA1.json.readiness.score}, User B=${rB1.json.readiness.score}, Unknown=${rAInspectUnknown.json.readiness.score})`);
+
+    // Test 2: Score Stability (10 identical runs + NaN/Infinity/alias dedup checks)
+    const stabilityUser = { id: null, skills: JSON.stringify(['JavaScript', 'JS', 'Go', 'Golang', 'TypeScript']), experience_level: 'Intermediate', name: 'Dev', is_onboarded: 1 };
+    const sampleIssuesList = [
+      { title: 'Fix TypeScript type definitions in Go bridge', repoName: 'org/go-ts', language: 'TypeScript', difficulty: 'Intermediate', category: 'help-wanted', commentsCount: 'not-a-number', labels: ['help wanted'] }
+    ];
+    const baselineStability = calculateContributionReadiness(stabilityUser, sampleIssuesList, { roadmapCompletedCount: 4, roadmapVerified: true });
+    assert.strictEqual(baselineStability.declaredSkills.length, 3, 'Canonical aliases JS/JavaScript and Go/Golang must deduplicate');
+    assert.ok(Number.isFinite(baselineStability.score) && !Number.isNaN(baselineStability.score), 'Score must never be NaN/Infinity');
+    const sumBreakdown = Object.values(baselineStability.breakdown).reduce((acc, b) => acc + b.score, 0);
+    assert.strictEqual(baselineStability.score, sumBreakdown, 'Total readiness score must equal exact sum of breakdown factors');
+    for (let run = 0; run < 10; run++) {
+      const rerun = calculateContributionReadiness(stabilityUser, sampleIssuesList, { roadmapCompletedCount: 4, roadmapVerified: true });
+      assert.strictEqual(rerun.score, baselineStability.score, `Run ${run + 1} score must equal baseline`);
+      assert.deepStrictEqual(rerun.breakdown, baselineStability.breakdown, `Run ${run + 1} breakdown must be identical`);
+    }
+    const weirdCtx = calculateContributionReadiness(stabilityUser, sampleIssuesList, { roadmapCompletedCount: 'NaN' });
+    assert.ok(Number.isFinite(weirdCtx.score) && weirdCtx.score >= 0 && weirdCtx.score <= 100);
+    pass('Test 2 Score Stability (10 identical runs, canonical alias dedup, no NaN/Infinity) verified');
+
+    // Test 3: Profile Update changes Readiness Score immediately
+    await request('/dashboard/profile', {
+      method: 'POST',
+      cookie: cookieA,
+      body: new URLSearchParams({
+        name: 'Saanvi Updated',
+        bio: 'Contributing to Python and React repositories',
+        skills: JSON.stringify(['Python', 'React', 'TypeScript', 'Git']),
+        experience_level: 'Advanced'
+      })
+    });
+    const rAAfterProfile = await request('/dashboard/api/readiness', { cookie: cookieA, headers: { Accept: 'application/json' } });
+    assert.ok(rAAfterProfile.json.readiness.score > rA1.json.readiness.score, `Profile upgrade should increase readiness (${rA1.json.readiness.score} -> ${rAAfterProfile.json.readiness.score})`);
+    pass(`Test 3 Profile Update verified (${rA1.json.readiness.score} -> ${rAAfterProfile.json.readiness.score})`);
+
+    // Test 4 & Test 6: Roadmap Update, Persistence Across Refresh & Logout/Login, Reset, and Readiness Recalculation
+    await request('/api/roadmap/reset', { method: 'POST', cookie: cookieA });
+    const afterResetR = await request('/dashboard/api/readiness', { cookie: cookieA, headers: { Accept: 'application/json' } });
+    for (let s = 1; s <= 7; s++) {
+      await request('/api/roadmap/step', { method: 'POST', cookie: cookieA, body: { stepNumber: s, completed: true } });
+    }
+    const rAfterRoadmap = await request('/dashboard/api/readiness', { cookie: cookieA, headers: { Accept: 'application/json' } });
+    assert.ok(rAfterRoadmap.json.readiness.score >= afterResetR.json.readiness.score, 'Completing 7 roadmap stages increases/maintains readiness');
+    assert.strictEqual(rAfterRoadmap.json.roadmapProgress.percentage, 50);
+
+    // Logout & re-login User A to verify persistence in SQLite across auth sessions
+    await request('/auth/logout', { cookie: cookieA });
+    const reloginA = await request('/auth/login', {
+      method: 'POST',
+      body: new URLSearchParams({ identifier: testUserA, password: 'Password123!' })
+    });
+    assert.strictEqual(reloginA.status, 302);
+    const cookieA2 = reloginA.cookie;
+    const roadmapAfterRelogin = await request('/api/roadmap', { cookie: cookieA2 });
+    assert.strictEqual(roadmapAfterRelogin.json.completedCount, 7, 'Roadmap progress must persist across logout and login');
+    assert.strictEqual(roadmapAfterRelogin.json.percentage, 50);
+
+    const resetRes2 = await request('/api/roadmap/reset', { method: 'POST', cookie: cookieA2 });
+    assert.strictEqual(resetRes2.status, 200);
+    assert.strictEqual(resetRes2.json.completedCount, 0);
+    assert.strictEqual(resetRes2.json.percentage, 0);
+    assert.strictEqual(typeof resetRes2.json.readinessScore, 'number');
+    pass('Test 4 & Test 6 Roadmap Update + Persistence across Refresh/Logout/Login/Reset verified');
+
+    // Test 5: Repository Health Edge Cases (Stale + High Stars, Incomplete Metadata, Live vs Cached parity)
+    const stalePopular = calculateRepositoryHealth({
+      pushed_at: new Date(Date.now() - 400 * 86400000).toISOString(),
+      updated_at: new Date(Date.now() - 400 * 86400000).toISOString(),
+      stargazers_count: 25000,
+      forks_count: 4500,
+      open_issues_count: 45,
+      description: 'Popular but abandoned library with high star count.',
+      license: { spdx_id: 'MIT' },
+      topics: ['legacy', 'javascript', 'utils'],
+      has_issues: true,
+      archived: false
+    });
+    assert.strictEqual(stalePopular.statusLabel, 'Stale / Inactive', 'High-star inactive repo (>180d) must never be Healthy or Moderately Maintained');
+    assert.strictEqual(stalePopular.factors.popularityContext.score, 15);
+    assert.strictEqual(stalePopular.factors.maintenanceRecency.score, 5);
+
+    const archivedRepo = calculateRepositoryHealth({
+      pushed_at: new Date().toISOString(),
+      archived: true,
+      stargazers_count: 5000,
+      forks_count: 400,
+      open_issues_count: 10,
+      description: 'Archived read-only repository.',
+      license: { spdx_id: 'MIT' }
+    });
+    assert.strictEqual(archivedRepo.statusLabel, 'Archived / Read-Only');
+
+    const incompleteRepo = calculateRepositoryHealth({
+      description: 'Short description without timestamps or issue counts',
+      license: { spdx_id: 'MIT' }
+    });
+    assert.strictEqual(incompleteRepo.isDataComplete, false);
+    assert.strictEqual(incompleteRepo.factors.maintenanceRecency.score, 0, 'Missing timestamp must award 0 maintenance pts');
+    assert.strictEqual(incompleteRepo.factors.issueBalance.score, 0, 'Missing open_issues_count must award 0 issue balance pts');
+    assert.strictEqual(incompleteRepo.factors.popularityContext.score, 0, 'Missing stars/forks must award 0 popularity pts');
+    assert.strictEqual(incompleteRepo.statusLabel, 'Incomplete Data', 'Incomplete metadata must not show a misleading healthy status');
+
+    const liveLikeRepo = calculateRepositoryHealth({
+      pushed_at: new Date(Date.now() - 3 * 86400000).toISOString(),
+      updated_at: new Date(Date.now() - 3 * 86400000).toISOString(),
+      stargazers_count: 850,
+      forks_count: 120,
+      open_issues_count: 35,
+      description: 'Well maintained open-source developer toolkit with active triage.',
+      license: { spdx_id: 'Apache-2.0' },
+      topics: ['nodejs', 'cli', 'good-first-issue'],
+      homepage: 'https://example.org',
+      archived: false,
+      has_issues: true
+    });
+    const cachedLikeRepo = calculateRepositoryHealth({
+      pushed_at: liveLikeRepo ? new Date(Date.now() - 3 * 86400000).toISOString() : null,
+      updated_at: new Date(Date.now() - 3 * 86400000).toISOString(),
+      stargazers_count: 850,
+      forks_count: 120,
+      open_issues_count: 35,
+      description: 'Well maintained open-source developer toolkit with active triage.',
+      license: 'Apache-2.0',
+      topics: ['nodejs', 'cli', 'good-first-issue'],
+      homepage: 'https://example.org',
+      archived: false,
+      has_issues: true
+    });
+    assert.strictEqual(liveLikeRepo.score, cachedLikeRepo.score, 'Live vs cached repository metadata must yield identical health scores');
+    assert.strictEqual(liveLikeRepo.statusLabel, 'Healthy & Active');
+    pass('Test 5 Repository Health edge cases (stale high-star, archived, incomplete metadata zero-baseline, live/cached parity) verified');
+
+    // --- 6. Deterministic Readiness Score Comprehensive Verification (All 15 Cases + UI Parity) ---
+    console.log('\n--- 6. Contribution Readiness Genuine Data & 15-Scenario Verification ---');
+
+    const assertMathIntegrity = (resObj, label) => {
+      assert.ok(Number.isInteger(resObj.score) && resObj.score >= 0 && resObj.score <= 100, `${label}: score must be integer 0..100`);
+      const factorSum =
+        resObj.breakdown.skillAlignment.score +
+        resObj.breakdown.profileFoundation.score +
+        resObj.breakdown.issueClarity.score +
+        resObj.breakdown.beginnerAvailability.score;
+      assert.strictEqual(resObj.score, factorSum, `${label}: total score (${resObj.score}) must equal sum of 4 breakdown factors (${factorSum})`);
+      assert.strictEqual(resObj.pointsAwarded, resObj.score, `${label}: pointsAwarded must match score`);
+      assert.strictEqual(resObj.pointsDeducted, 100 - resObj.score, `${label}: pointsDeducted must match 100 - score`);
+    };
+
+    const userReposList = [
+      { name: 'ts-starter', language: 'TypeScript', topics: ['react', 'jest'] },
+      { name: 'py-api', language: 'Python', topics: ['fastapi'] }
+    ];
+
+    // Scenarios 1 & 2: Matching skills (with GitHub repo alignment) vs Zero matching skills (no fabricated 6-pt floor)
+    const matchedDevRes = calculateContributionReadiness(validProfile, sampleBeginnerIssues, {
+      repositories: userReposList,
+      roadmapCompletedCount: 10
+    });
+    const noRepoMatchedRes = calculateContributionReadiness(validProfile, sampleBeginnerIssues, {
+      roadmapCompletedCount: 10
+    });
+    assertMathIntegrity(matchedDevRes, 'Matching skills + repos');
+    assert.strictEqual(matchedDevRes.isSufficientData, true);
+    assert.ok(matchedDevRes.verifiedRepoSkills.includes('TypeScript'), 'Must verify matching GitHub repository language');
+    assert.ok(
+      matchedDevRes.breakdown.skillAlignment.score > noRepoMatchedRes.breakdown.skillAlignment.score &&
+      matchedDevRes.breakdown.skillAlignment.score <= 35,
+      `Matching GitHub repository languages must improve Skill Alignment (${noRepoMatchedRes.breakdown.skillAlignment.score} -> ${matchedDevRes.breakdown.skillAlignment.score})`
+    );
+
+    const noMatchProfile = {
+      name: 'Rustacean Dev',
+      bio: 'Systems engineer',
+      skills: JSON.stringify(['Rust', 'C', 'Go']),
+      experience_level: 'Intermediate',
+      is_onboarded: 1
+    };
+    const noMatchRes = calculateContributionReadiness(noMatchProfile, sampleBeginnerIssues, { roadmapCompletedCount: 4 });
+    assertMathIntegrity(noMatchRes, 'Zero matching skills');
+    assert.strictEqual(noMatchRes.matchedSkills.length, 0, 'Must detect 0 matched skills');
+    assert.strictEqual(noMatchRes.breakdown.skillAlignment.score, 0, 'Zero skill matches with no matching repos must score 0 (no fake floor)');
+    pass('Scenarios 1 & 2: Skill + GitHub repo alignment vs zero-match zero-baseline verified');
+
+    // Scenarios 3, 4, 5: Beginner, Intermediate, Advanced strict scaling + factor totals
+    const rBeg = calculateContributionReadiness({ ...validProfile, experience_level: 'Beginner' }, sampleBeginnerIssues, { roadmapCompletedCount: 5 });
+    const rInt = calculateContributionReadiness({ ...validProfile, experience_level: 'Intermediate' }, sampleBeginnerIssues, { roadmapCompletedCount: 5 });
+    const rAdv = calculateContributionReadiness({ ...validProfile, experience_level: 'Advanced' }, sampleBeginnerIssues, { roadmapCompletedCount: 5 });
+    assertMathIntegrity(rBeg, 'Beginner');
+    assertMathIntegrity(rInt, 'Intermediate');
+    assertMathIntegrity(rAdv, 'Advanced');
+    assert.strictEqual(rBeg.breakdown.profileFoundation.score, 21);
+    assert.strictEqual(rInt.breakdown.profileFoundation.score, 23);
+    assert.strictEqual(rAdv.breakdown.profileFoundation.score, 25);
+    pass('Scenarios 3, 4 & 5: Beginner / Intermediate / Advanced factor math (21/23/25) verified');
+
+    // Scenarios 6, 7 & 8: Incomplete profile -> Insufficient Data; Missing GitHub data -> Insufficient Data; No eligible beginner issues -> 0 availability
+    const incompleteProfileRes = calculateContributionReadiness(
+      { id: 999991, name: 'Partial User', skills: '[]', experience_level: null, is_onboarded: 0 },
+      sampleBeginnerIssues,
+      { roadmapCompletedCount: 0, roadmapVerified: true }
+    );
+    assertMathIntegrity(incompleteProfileRes, 'Incomplete profile');
+    assert.strictEqual(incompleteProfileRes.experienceLevel, 'Unconfigured', 'Unconfigured experience must not silently default to Beginner or Intermediate');
+    assert.strictEqual(incompleteProfileRes.isSufficientData, false);
+    assert.strictEqual(incompleteProfileRes.readinessLevel, 'Insufficient Data');
+    assert.strictEqual(incompleteProfileRes.breakdown.profileFoundation.score, 0);
+
+    const missingGithubRes = calculateContributionReadiness(validProfile, [], { repositories: [], roadmapCompletedCount: 0 });
+    assertMathIntegrity(missingGithubRes, 'Missing GitHub data');
+    assert.strictEqual(missingGithubRes.isSufficientData, false);
+    assert.strictEqual(missingGithubRes.readinessLevel, 'Insufficient Data');
+    assert.strictEqual(missingGithubRes.breakdown.skillAlignment.score, 0, 'Missing GitHub data must award 0 skill alignment');
+    assert.strictEqual(missingGithubRes.breakdown.issueClarity.score, 0, 'Missing GitHub issues must award 0 issue clarity');
+    assert.strictEqual(missingGithubRes.breakdown.beginnerAvailability.score, 0, 'Missing GitHub issues + 0 roadmap must award 0 availability');
+
+    const nonBeginnerIssuesOnly = [
+      {
+        id: 3001,
+        number: 77,
+        title: 'Refactor internal parser state machine',
+        repoName: 'org/parser',
+        language: 'TypeScript',
+        commentsCount: 4,
+        description: 'Internal parser refactor for v3 protocol compatibility.',
+        labels: [{ name: 'enhancement' }, { name: 'architecture' }]
+      }
+    ];
+    const noGfiRes = calculateContributionReadiness(validProfile, nonBeginnerIssuesOnly, { roadmapCompletedCount: 0 });
+    assertMathIntegrity(noGfiRes, 'No beginner issues');
+    assert.strictEqual(noGfiRes.goodFirstIssuesCount, 0);
+    assert.strictEqual(noGfiRes.beginnerFriendlyIssuesCount, 0);
+    assert.strictEqual(noGfiRes.dataAvailability.noBeginnerIssuesFound, true);
+    assert.strictEqual(noGfiRes.breakdown.beginnerAvailability.score, 0, 'Zero eligible beginner issues + 0 roadmap must score 0 (never invented)');
+    pass('Scenarios 6, 7 & 8: Incomplete profile -> Insufficient Data, Missing GitHub data, & 0 beginner issue honesty verified');
+
+    // Scenario 9 & 12: Actual roadmap progress & different issues producing different evaluations
+    const rm0 = calculateContributionReadiness(validProfile, sampleBeginnerIssues, { roadmapCompletedCount: 0 });
+    const rm14 = calculateContributionReadiness(validProfile, sampleBeginnerIssues, { roadmapCompletedCount: 14 });
+    assert.strictEqual(rm14.breakdown.beginnerAvailability.score - rm0.breakdown.beginnerAvailability.score, 5, 'Completing 14/14 roadmap stages adds exact 5 pts');
+
+    const unlabelledBeginnerClaim = {
+      id: 3002,
+      number: 18,
+      title: 'Update core authentication lock handler',
+      repoName: 'org/auth',
+      language: 'Rust',
+      difficulty: 'Beginner', // even if falsely tagged Beginner, has no supporting label evidence
+      commentsCount: 2,
+      description: 'Update auth handler.',
+      labels: []
+    };
+    const evGfi = evaluateIssueReadiness(validProfile, sampleBeginnerIssues[0]);
+    const evUnlabelled = evaluateIssueReadiness(validProfile, unlabelledBeginnerClaim);
+    assert.notStrictEqual(evGfi.score, evUnlabelled.score, 'Different issues must produce distinct evaluations');
+    assert.ok(evGfi.score > evUnlabelled.score);
+    pass('Scenarios 9 & 12: Exact roadmap scaling (+5 pts) & evidence-backed issue differentiation verified');
+
+    // Scenarios 10, 11, 13, 14 & 15 (Live HTTP + SQLite Cache Invalidation + Dashboard UI Parity)
+    const testUserC = `saanvi_inc_${Date.now()}`;
+    await request('/auth/signup', {
+      method: 'POST',
+      body: { username: testUserC, email: `${testUserC}@devnexus.local`, password: 'Password123!', confirmPassword: 'Password123!' }
+    });
+    const loginC = await request('/auth/login', {
+      method: 'POST',
+      body: new URLSearchParams({ identifier: testUserC, password: 'Password123!' })
+    });
+    const cookieC = loginC.cookie;
+
+    // Incomplete user C HTTP readiness & /dashboard UI check (must show Insufficient Data & --/100, never fake Beginner)
+    const rCIncomplete = await request('/dashboard/api/readiness', { cookie: cookieC, headers: { Accept: 'application/json' } });
+    assert.strictEqual(rCIncomplete.status, 200);
+    assert.strictEqual(rCIncomplete.json.readiness.experienceLevel, 'Unconfigured');
+    assert.strictEqual(rCIncomplete.json.readiness.readinessLevel, 'Insufficient Data');
+    assert.strictEqual(rCIncomplete.json.readiness.isSufficientData, false);
+
+    // Profile skill & experience upgrade via HTTP immediately invalidates & recalculates score
+    await request('/onboarding', {
+      method: 'POST',
+      cookie: cookieC,
+      body: new URLSearchParams({
+        name: 'Incomplete Upgraded',
+        experience_level: 'Beginner',
+        skills: JSON.stringify(['TypeScript']),
+        bio: 'Learning TypeScript open source tooling.'
+      })
+    });
+    const rCBeginner = await request('/dashboard/api/readiness', { cookie: cookieC, headers: { Accept: 'application/json' } });
+    assert.strictEqual(rCBeginner.json.readiness.experienceLevel, 'Beginner');
+    assert.strictEqual(rCBeginner.json.readiness.isSufficientData, true);
+
+    await request('/dashboard/profile', {
+      method: 'POST',
+      cookie: cookieC,
+      body: new URLSearchParams({
+        name: 'Incomplete Upgraded',
+        experience_level: 'Advanced',
+        skills: JSON.stringify(['TypeScript', 'Python', 'React', 'Jest']),
+        bio: 'Full-stack TypeScript and Python maintainer.'
+      })
+    });
+    const rCAdvanced = await request('/dashboard/api/readiness', { cookie: cookieC, headers: { Accept: 'application/json' } });
+    assert.strictEqual(rCAdvanced.json.readiness.experienceLevel, 'Advanced');
+    assert.ok(rCAdvanced.json.readiness.score > rCBeginner.json.readiness.score, 'Skill + experience upgrade must recalculate higher score immediately without stale cache');
+
+    // Roadmap step completion immediately updates User C score without touching User A/B
+    await request('/api/roadmap/reset', { method: 'POST', cookie: cookieC });
+    for (let s = 1; s <= 14; s++) {
+      await request('/api/roadmap/step', { method: 'POST', cookie: cookieC, body: { stepNumber: s, completed: true } });
+    }
+    const rCWithRoadmap = await request('/dashboard/api/readiness', { cookie: cookieC, headers: { Accept: 'application/json' } });
+    assert.ok(rCWithRoadmap.json.readiness.score > rCAdvanced.json.readiness.score, 'Completing roadmap must immediately recalculate higher readiness score');
+
+    // UI Dashboard parity check for User C: real score + Disclaimer + no fake matched skills when none match
+    const dashC = await request('/dashboard', { cookie: cookieC });
+    assert.strictEqual(dashC.status, 200);
+    assert.ok(dashC.text.includes('Data Status:'), 'Dashboard must show explicit data availability status');
+    assert.ok(dashC.text.includes('Estimated readiness assessment'), 'Dashboard must include clear estimated-score disclaimer');
+
+    // User A with unmatched Java/C/HTML skills on ?language=python must NOT show Java/C/HTML inside Matched Skills pills
+    const dashAPython = await request('/dashboard?language=python', { cookie: cookieA2 });
+    assert.strictEqual(dashAPython.status, 200);
+    assert.ok(!dashAPython.text.includes('(Declared)'), 'Dashboard must never disguise unmatched declared skills as matched skills');
+
+    // Deterministic repeatability via HTTP API
+    const rRepeat1 = await request('/dashboard/api/readiness', { cookie: cookieC, headers: { Accept: 'application/json' } });
+    const rRepeat2 = await request('/dashboard/api/readiness', { cookie: cookieC, headers: { Accept: 'application/json' } });
+    assert.strictEqual(rRepeat1.json.readiness.score, rRepeat2.json.readiness.score);
+    assert.deepStrictEqual(rRepeat1.json.readiness.breakdown, rRepeat2.json.readiness.breakdown);
+
+    const uCDel = findUserByUsername(testUserC);
+    if (uCDel) {
+      db.prepare('DELETE FROM roadmap_progress WHERE user_id = ?').run(uCDel.id);
+      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(uCDel.id);
+      db.prepare('DELETE FROM activity_logs WHERE user_id = ?').run(uCDel.id);
+      db.prepare('DELETE FROM users WHERE id = ?').run(uCDel.id);
+    }
+    pass('Scenarios 10, 11, 13, 14 & 15: HTTP skill/exp/roadmap updates, cache invalidation, UI parity & repeatability verified');
+
   } finally {
     // Clean up temporary test users and their cascaded roadmap_progress/sessions/activity_logs
     for (const uName of [testUserA, testUserB]) {
