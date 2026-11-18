@@ -8,6 +8,7 @@ const router = express.Router();
 const { requireAuth } = require('../services/authService');
 const skillTreeService = require('../services/skillTreeService');
 const { getUserRepositories } = require('../services/githubService');
+const streakService = require('../services/streakService');
 
 async function handleGetSkillTreeJson(req, res) {
   try {
@@ -37,6 +38,7 @@ async function handleUnlockNode(req, res) {
     );
     const tree = await skillTreeService.evaluateUserSkillTree(req.user.id, req.user, repos || []);
     const result = await skillTreeService.claimSkillNode(req.user.id, req.params.nodeId, tree);
+    streakService.recordActivity(req.user.id, 'skill_node_unlocked').catch(() => {});
     res.json({
       success: true,
       node: result.node,

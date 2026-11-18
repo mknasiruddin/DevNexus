@@ -53,6 +53,7 @@ const SKILL_PALETTE = {
   'C++': '#f34b7d',
   'Docs': '#8b949e'
 };
+const streakService = require('../services/streakService');
 
 // Login Handler
 function handleGetLogin(req, res) {
@@ -108,6 +109,7 @@ function handlePostLogin(req, res) {
   req.session.save();
 
   logActivity(user.id, 'USER_LOGIN', user.username, 'Authenticated via local credentials');
+  streakService.recordLogin(user.id);
 
   if (!user.is_onboarded) {
     return res.redirect('/onboarding');
@@ -228,6 +230,7 @@ router.post('/demo-login', loginRateLimiter, async (req, res) => {
     req.session.save();
 
     logActivity(localUser.id, 'DEMO_LOGIN', localUser.username, 'Logged in via student demo account');
+    streakService.recordLogin(localUser.id);
 
     if (!localUser.is_onboarded) {
       return res.redirect('/onboarding');
@@ -302,6 +305,7 @@ router.get('/github/callback', async (req, res) => {
     req.session.save();
 
     logActivity(localUser.id, isNew ? 'USER_SIGNUP' : 'USER_LOGIN', localUser.username, 'Authenticated via GitHub OAuth');
+    streakService.recordLogin(localUser.id);
 
     // 6. Redirect new users to onboarding, existing users to dashboard
     if (isNew || !localUser.is_onboarded) {
@@ -496,6 +500,7 @@ function handleAdminLogin(req, res) {
   req.session.save();
 
   logActivity(user.id, 'ADMIN_LOGIN_SUCCESS', username, 'Administrator authenticated successfully via bcrypt verification');
+  streakService.recordLogin(user.id);
   res.redirect('/admin');
 }
 
