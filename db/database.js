@@ -201,6 +201,33 @@ function initSchema() {
 
     CREATE INDEX IF NOT EXISTS idx_streak_activities_user_date ON streak_activities(user_id, activity_date);
     CREATE INDEX IF NOT EXISTS idx_user_streaks_user ON user_streaks(user_id);
+    CREATE TABLE IF NOT EXISTS github_contribution_dates (
+      user_id INTEGER NOT NULL,
+      activity_date TEXT NOT NULL,
+      contribution_count INTEGER DEFAULT 1,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY(user_id, activity_date),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS user_login_streaks (
+      user_id INTEGER PRIMARY KEY,
+      current_streak INTEGER DEFAULT 0,
+      longest_streak INTEGER DEFAULT 0,
+      last_login_date TEXT,
+      total_login_days INTEGER DEFAULT 0,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS login_streak_activities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      activity_date TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, activity_date),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_login_streak_activities_user_date ON login_streak_activities(user_id, activity_date);
 
     CREATE TABLE IF NOT EXISTS user_badges (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1093,6 +1120,54 @@ function consumeStreakFreeze(userId) {
   return false;
 }
 
+function getKolkataDate() {
+  const parts = new Intl.DateTimeFormat('en', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function calculateLoginStreak(dates, longestStored = 0, today = getKolkataDate()) {
+  const active = new Set(dates);
+  const shift = (date, amount) => {
+    const [year, month, day] = date.split('-').map(Number);
+    const value = new Date(Date.UTC(year, month - 1, day + amount));
+    return value.toISOString().slice(0, 10);
+  };
+  let current = 0;
+  let cursor = active.has(today) ? today : shift(today, -1);
+  while (active.has(cursor)) { current++; cursor = shift(cursor, -1); }
+  return { current, longest: Math.max(longestStored, current), activeToday: active.has(today) };
+}
+
+function recordLoginStreakDate(userId, activityDate = getKolkataDate()) {
+  db.prepare('INSERT INTO login_streak_activities (user_id, activity_date) VALUES (?, ?) ON CONFLICT(user_id, activity_date) DO NOTHING').run(userId, activityDate);
+  const dates = db.prepare('SELECT activity_date FROM login_streak_activities WHERE user_id = ? ORDER BY activity_date DESC').all(userId).map(row => row.activity_date);
+  const row = db.prepare('SELECT longest_streak FROM user_login_streaks WHERE user_id = ?').get(userId);
+  const computed = calculateLoginStreak(dates, row ? row.longest_streak : 0, activityDate);
+  db.prepare(`INSERT INTO user_login_streaks (user_id, current_streak, longest_streak, last_login_date, total_login_days, updated_at)
+    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET current_streak=excluded.current_streak, longest_streak=excluded.longest_streak, last_login_date=excluded.last_login_date, total_login_days=excluded.total_login_days, updated_at=CURRENT_TIMESTAMP`).run(userId, computed.current, computed.longest, activityDate, dates.length);
+  return { current_streak: computed.current, longest_streak: computed.longest, total_login_days: dates.length, activeToday: computed.activeToday };
+}
+
+function getUserLoginStreak(userId) {
+  const dates = db.prepare('SELECT activity_date FROM login_streak_activities WHERE user_id = ? ORDER BY activity_date DESC').all(userId).map(row => row.activity_date);
+  const row = db.prepare('SELECT longest_streak FROM user_login_streaks WHERE user_id = ?').get(userId);
+  const computed = calculateLoginStreak(dates, row ? row.longest_streak : 0);
+  db.prepare(`INSERT INTO user_login_streaks (user_id, current_streak, longest_streak, last_login_date, total_login_days, updated_at)
+    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET current_streak=excluded.current_streak, longest_streak=excluded.longest_streak, last_login_date=excluded.last_login_date, total_login_days=excluded.total_login_days, updated_at=CURRENT_TIMESTAMP`).run(userId, computed.current, computed.longest, dates[0] || null, dates.length);
+  return { current_streak: computed.current, longest_streak: computed.longest, total_login_days: dates.length, last_login_date: dates[0] || null };
+}
+
+function saveGitHubContributionDates(userId, contributionDays) {
+  const insert = db.prepare(`INSERT INTO github_contribution_dates (user_id, activity_date, contribution_count, updated_at)
+    VALUES (?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id, activity_date) DO UPDATE SET contribution_count=excluded.contribution_count, updated_at=CURRENT_TIMESTAMP`);
+  for (const day of contributionDays) if (day.date && day.contributionCount > 0) insert.run(userId, day.date, day.contributionCount);
+}
+
+function getGitHubContributionDates(userId) {
+  return db.prepare('SELECT activity_date, contribution_count FROM github_contribution_dates WHERE user_id = ? ORDER BY activity_date DESC').all(userId);
+}
+
 // --- Achievement Badges (Member 3) ---
 
 function getUserUnlockedBadges(userId) {
@@ -1121,6 +1196,30 @@ function awardUserBadge(userId, badgeId) {
 function hasUserBadge(userId, badgeId) {
   const row = db.prepare('SELECT id FROM user_badges WHERE user_id = ? AND badge_id = ? LIMIT 1').get(userId, badgeId);
   return Boolean(row);
+}
+
+// Returns activity counts grouped by type for the last N days (Member 3 — stats viz)
+function getActivityBreakdown(userId, days = 90) {
+  return db.prepare(`
+    SELECT activity_type, COUNT(*) as count
+    FROM streak_activities
+    WHERE user_id = ?
+      AND activity_date >= date('now', ? || ' days')
+    GROUP BY activity_type
+    ORDER BY count DESC
+  `).all(userId, `-${days}`);
+}
+
+// Returns daily activity counts for the last N days (for sparkline/chart)
+function getDailyActivityCounts(userId, days = 90) {
+  return db.prepare(`
+    SELECT activity_date, COUNT(*) as count
+    FROM streak_activities
+    WHERE user_id = ?
+      AND activity_date >= date('now', ? || ' days')
+    GROUP BY activity_date
+    ORDER BY activity_date ASC
+  `).all(userId, `-${days}`);
 }
 
 module.exports = {
@@ -1174,8 +1273,14 @@ module.exports = {
   getUserStreakActivities,
   getUserTotalActiveDays,
   consumeStreakFreeze,
+  recordLoginStreakDate,
+  getUserLoginStreak,
+  saveGitHubContributionDates,
+  getGitHubContributionDates,
   getUserUnlockedBadges,
   awardUserBadge,
-  hasUserBadge
+  hasUserBadge,
+  getActivityBreakdown,
+  getDailyActivityCounts
 };
 

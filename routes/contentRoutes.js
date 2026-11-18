@@ -1,8 +1,3 @@
-/**
- * DevNexus Content & Navigation Routes
- * Connects all informational, educational, and community navigation destinations.
- */
-
 const express = require('express');
 const router = express.Router();
 const {
@@ -16,6 +11,7 @@ const {
   getRoadmapStagesWithProgress,
   calculateContributionReadiness
 } = require('../services/saanviModulesService');
+const streakService = require('../services/streakService');
 
 
 // 1. Contribution Guide, First Contribution Roadmap & Learning Hub
@@ -109,6 +105,7 @@ router.post('/api/roadmap/step', (req, res) => {
 
   try {
     setRoadmapStepStatus(req.user.id, parsedStep, completed);
+    if (completed) streakService.recordActivity(req.user.id, 'roadmap_step').catch(() => {});
     const updatedRoadmap = getRoadmapStagesWithProgress(req.user.id);
     const readiness = calculateContributionReadiness(req.user, [], {
       roadmapCompletedCount: updatedRoadmap.completedCount

@@ -163,7 +163,7 @@
               <div class="streak-widget-header">
                 <div class="streak-flame-icon" aria-hidden="true">🔥</div>
                 <div class="streak-header-info">
-                  <div class="streak-count-title" id="streak-count-display"><%= streak.current_streak %> Day Streak</div>
+                  <div class="streak-count-title" id="streak-count-display"><%= streak.current_streak %> Day GitHub Contribution Streak</div>
                   <div class="streak-sub-title">Best: <%= streak.longest_streak %>d &bull; <%= streak.total_active_days %> total days</div>
                 </div>
                 <% if (streak.activeToday) { %>
@@ -197,6 +197,18 @@
                   🏆 Badges (<%= locals.badgeStats ? badgeStats.unlockedCount : 0 %>) &rarr;
                 </a>
               </div>
+            </div>
+          <% } %>
+          <% if (locals.loginStreak) { %>
+            <div class="streak-sidebar-widget" aria-label="Login Streak" style="margin-top:12px;">
+              <div class="streak-widget-header">
+                <div class="streak-flame-icon" aria-hidden="true">🔐</div>
+                <div class="streak-header-info">
+                  <div class="streak-count-title"><%= loginStreak.current_streak %> Day Login Streak</div>
+                  <div class="streak-sub-title">Best: <%= loginStreak.longest_streak %>d &bull; <%= loginStreak.total_login_days %> login days</div>
+                </div>
+              </div>
+              <div class="streak-motivation">Sign in on consecutive days to build this streak.</div>
             </div>
           <% } %>
         </aside>

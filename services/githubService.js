@@ -328,6 +328,8 @@ async function getUserEvents(username, token = null, { perPage = 8 } = {}) {
 
     return {
       id: ev.id,
+      githubType: ev.type,
+      date: ev.created_at ? ev.created_at.slice(0, 10) : null,
       type,
       repo: ev.repo?.name || '',
       repoUrl: `https://github.com/${ev.repo?.name || ''}`,
@@ -339,6 +341,31 @@ async function getUserEvents(username, token = null, { perPage = 8 } = {}) {
 
   setCache(cacheKey, events, { rateLimit }, 180);
   return { events, rateLimit, cached: false };
+}
+
+async function getGitHubContributionCalendar(username, token) {
+  if (!token) return { days: [], unavailable: true };
+  const cacheKey = `github_contribution_calendar:${String(username).toLowerCase()}`;
+  const cached = getCached(cacheKey);
+  if (cached) return { days: cached.data, unavailable: false, cached: true };
+  const from = new Date();
+  from.setUTCFullYear(from.getUTCFullYear() - 1);
+  const query = `query($login:String!, $from:DateTime!, $to:DateTime!) { user(login:$login) { contributionsCollection(from:$from,to:$to) { contributionCalendar { weeks { contributionDays { date contributionCount } } } } } }`;
+  try {
+    const response = await fetch('https://api.github.com/graphql', {
+      method: 'POST',
+      headers: { ...getHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, variables: { login: username, from: from.toISOString(), to: new Date().toISOString() } })
+    });
+    if (!response.ok) return { days: [], unavailable: true };
+    const body = await response.json();
+    const weeks = body.data?.user?.contributionsCollection?.contributionCalendar?.weeks || [];
+    const days = weeks.flatMap(week => week.contributionDays);
+    setCache(cacheKey, days, {}, 3600);
+    return { days, unavailable: false };
+  } catch (_) {
+    return { days: [], unavailable: true };
+  }
 }
 
 // ----------------------------------------------------
@@ -1080,6 +1107,7 @@ module.exports = {
   getUserProfile,
   getUserRepositories,
   getUserEvents,
+  getGitHubContributionCalendar,
   searchIssues,
   searchRepositories,
   parseRateLimit,

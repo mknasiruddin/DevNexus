@@ -6,6 +6,10 @@ const {
   recordStreakActivityDate,
   getUserStreakActivities,
   getUserTotalActiveDays,
+  recordLoginStreakDate,
+  getUserLoginStreak,
+  saveGitHubContributionDates,
+  getGitHubContributionDates,
   consumeStreakFreeze,
   logActivity,
   findUserById,
@@ -74,12 +78,12 @@ function computeStreakState(activeDatesList, storedStreak, referenceDate = null)
   let statusMessage = '';
   if (activeToday) {
     statusMessage = currentStreak === 1
-      ? '🔥 Day 1 complete! You have started your contribution streak.'
-      : `🔥 On fire! You have maintained an active ${currentStreak}-day streak today.`;
+      ? '🔥 Day 1 complete! Your GitHub contribution graph shows activity today.'
+      : `🔥 Your GitHub contribution graph shows ${currentStreak} consecutive active days.`;
   } else if (activeYesterday) {
-    statusMessage = `⚡ Keep your ${currentStreak}-day streak alive! Make a contribution today.`;
+    statusMessage = `⚡ Keep your ${currentStreak}-day streak alive! Your GitHub contribution graph shows activity yesterday; contribute today to continue it.`;
   } else {
-    statusMessage = '🌱 Start a new contribution streak today with your next action!';
+    statusMessage = '🌱 No recent GitHub contribution days found. Visit the dashboard to sync your GitHub activity.';
   }
 
   const evaluatedMilestones = STREAK_MILESTONES.map(m => ({
@@ -146,9 +150,24 @@ async function recordActivity(userId, activityType = 'general', customDate = nul
 
 function getStreakSummary(userId, referenceDate = null) {
   if (!userId) return null;
-  const activities = getUserStreakActivities(userId, 365);
-  const stored = getUserStreakData(userId);
-  return computeStreakState(activities, stored, referenceDate);
+  const activities = getGitHubContributionDates(userId);
+  return computeStreakState(activities, null, referenceDate);
+}
+
+function syncGitHubContributions(userId, days) {
+  if (userId && Array.isArray(days)) saveGitHubContributionDates(userId, days);
+}
+
+function recordLogin(userId, customDate = null) {
+  if (!userId) return null;
+  if (customDate) return recordLoginStreakDate(userId, formatLocalDate(customDate));
+  const parts = new Intl.DateTimeFormat('en', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return recordLoginStreakDate(userId, `${values.year}-${values.month}-${values.day}`);
+}
+
+function getLoginStreakSummary(userId) {
+  return userId ? getUserLoginStreak(userId) : null;
 }
 
 function useStreakFreeze(userId, referenceDate = null) {
@@ -183,6 +202,9 @@ module.exports = {
   computeStreakState,
   recordActivity,
   getStreakSummary,
+  syncGitHubContributions,
+  recordLogin,
+  getLoginStreakSummary,
   useStreakFreeze,
   getPublicStreak
 };

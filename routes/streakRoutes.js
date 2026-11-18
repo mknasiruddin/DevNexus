@@ -22,11 +22,12 @@ router.get('/', async (req, res) => {
     return res.redirect('/login');
   }
   try {
-    const streak = await streakService.recordActivity(req.user.id, 'streak_page_visit');
+    const streak = streakService.getStreakSummary(req.user.id);
+    const loginStreak = streakService.getLoginStreakSummary(req.user.id);
     if (isJsonRequest(req)) {
-      return res.json({ success: true, user: { id: req.user.id, username: req.user.username, name: req.user.name || req.user.username }, streak });
+      return res.json({ success: true, user: { id: req.user.id, username: req.user.username, name: req.user.name || req.user.username }, streak, loginStreak });
     }
-    res.render('streak', { siteName: 'DevNexus', activePage: 'streak', user: req.user, streak });
+    res.render('streak', { siteName: 'DevNexus', activePage: 'streak', user: req.user, streak, loginStreak });
   } catch (err) {
     console.error('[DevNexus Streak Error]:', err);
     if (isJsonRequest(req)) return res.status(500).json({ success: false, error: 'Failed to retrieve streak metrics.' });

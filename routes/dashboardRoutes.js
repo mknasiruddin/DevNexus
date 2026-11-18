@@ -10,6 +10,7 @@ const {
   getUserProfile,
   getUserRepositories,
   getUserEvents,
+  getGitHubContributionCalendar,
   searchIssues,
   searchRepositories,
   isOAuthConfigured
@@ -30,6 +31,10 @@ const {
 
 const streakService = require('../services/streakService');
 const badgeService = require('../services/badgeService');
+
+function pingStreak(userId, type) {
+  streakService.recordActivity(userId, type).catch(() => {});
+}
 
 const { requireAuth } = require('../services/authService');
 const authRoutes = require('./authRoutes');
@@ -86,6 +91,17 @@ if (userSkills.length > 0) {
 
     // 3. Fetch Real GitHub Events / Activity
     const { events, rateLimit: eventsRateLimit } = await getUserEvents(targetUsername, githubToken, { perPage: 6 });
+    if (targetUsername.toLowerCase() === req.user.username.toLowerCase()) {
+      const syncPromise = githubToken
+        ? getGitHubContributionCalendar(targetUsername, githubToken).then(calendar => {
+          if (!calendar.unavailable) streakService.syncGitHubContributions(req.user.id, calendar.days);
+        })
+        : getUserEvents(targetUsername, null, { perPage: 100 }).then(({ events: publicEvents }) => {
+          const contributionTypes = new Set(['PushEvent', 'PullRequestEvent', 'IssuesEvent', 'IssueCommentEvent', 'PullRequestReviewEvent', 'PullRequestReviewCommentEvent', 'DiscussionEvent', 'DiscussionCommentEvent']);
+          streakService.syncGitHubContributions(req.user.id, publicEvents.filter(event => contributionTypes.has(event.githubType) && event.date).map(event => ({ date: event.date, contributionCount: 1 })));
+        });
+      syncPromise.catch(syncError => console.warn('[DevNexus] GitHub contribution streak sync skipped:', syncError.message));
+    }
 
     // 4. Fetch Real Open-Source Issues from GitHub Search API
     const issueSearchResults = await searchIssues(
@@ -118,7 +134,7 @@ if (userSkills.length > 0) {
     // 7. Auto-record daily contribution streak & retrieve metrics (Member 3)
     let streak = null;
     try {
-      streak = await streakService.recordActivity(req.user.id, 'dashboard_visit');
+      streak = streakService.getStreakSummary(req.user.id);
     } catch (e) {
       console.warn('[DevNexus] Streak auto-record skipped:', e.message);
     }
@@ -164,6 +180,7 @@ if (userSkills.length > 0) {
       readinessScore,
       roadmapProgress,
       streak,
+      loginStreak: streakService.getLoginStreakSummary(req.user.id),
       badgeStats,
       activeQuery: query,
       activeLabel: label,
@@ -272,6 +289,7 @@ router.post('/api/bookmarks', requireAuth, (req, res) => {
 
   try {
     addBookmark(userId, bookmarkData);
+    pingStreak(userId, 'bookmark_added');
     const userBookmarks = getUserBookmarks(userId);
     res.json({ success: true, count: userBookmarks.length });
   } catch (err) {

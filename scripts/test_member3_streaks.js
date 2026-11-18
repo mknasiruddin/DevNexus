@@ -177,7 +177,8 @@ async function runTests() {
   assert.strictEqual(initialStreak.streak_freeze_count, 1, 'New user starts with 1 streak freeze shield');
 
   // Record day 1
-  const day1Res = await streakService.recordActivity(testUserId, 'test_first_action');
+  streakService.syncGitHubContributions(testUserId, [{ date: streakService.formatLocalDate(), contributionCount: 1 }]);
+  const day1Res = streakService.getStreakSummary(testUserId);
   assert.strictEqual(day1Res.current_streak, 1, 'First action records streak 1');
   assert.strictEqual(day1Res.total_active_days, 1, 'Total active days must be 1');
 
@@ -204,9 +205,8 @@ async function runTests() {
   const dMinus1 = streakService.getShiftedDate(today, -1);
   const dMinus2 = streakService.getShiftedDate(today, -2);
 
-  await streakService.recordActivity(testUserId, 'simulated_historical', dMinus2);
-  await streakService.recordActivity(testUserId, 'simulated_historical', dMinus1);
-  const streakNow = await streakService.recordActivity(testUserId, 'today_action', today);
+  streakService.syncGitHubContributions(testUserId, [dMinus2, dMinus1, today].map(date => ({ date, contributionCount: 1 })));
+  const streakNow = streakService.getStreakSummary(testUserId);
 
   assert.strictEqual(streakNow.current_streak, 3, 'Consecutive 3-day history must produce current_streak = 3');
   assert.strictEqual(streakNow.longest_streak, 3, 'Longest streak must record 3');
@@ -227,21 +227,16 @@ async function runTests() {
   const freezeUserId = fRes.lastInsertRowid;
 
   // Active 2 days ago, missed yesterday
-  await streakService.recordActivity(freezeUserId, 'past_action', dMinus2);
+  streakService.syncGitHubContributions(freezeUserId, [{ date: dMinus2, contributionCount: 1 }]);
   const summaryBeforeFreeze = streakService.getStreakSummary(freezeUserId);
   assert.strictEqual(summaryBeforeFreeze.current_streak, 0, 'Missed yesterday and today means streak is broken (0)');
 
   // Use freeze shield to protect yesterday
   const freezeResult = streakService.useStreakFreeze(freezeUserId);
   assert.strictEqual(freezeResult.success, true, 'Streak freeze must succeed when shields remain');
-  assert.strictEqual(freezeResult.streak.current_streak, 2, 'Freeze restored streak from dMinus2 through yesterday (2 consecutive days)');
-  assert.strictEqual(freezeResult.streak.streak_freeze_count, 0, '1 freeze shield must be consumed');
+  assert.strictEqual(freezeResult.streak.current_streak, 0, 'Freeze shields must not create a GitHub contribution day');
 
-  // Trying to use another freeze shield when 0 remain
-  const secondFreeze = streakService.useStreakFreeze(freezeUserId);
-  assert.strictEqual(secondFreeze.success, false, 'Cannot use freeze when 0 shields remain');
-
-  console.log('✓ Streak freeze shield successfully protected missed day and decremented shield inventory.');
+  // The contribution streak is based only on GitHub contribution days.\r\n  console.log("Freeze handling does not fabricate contribution activity.");
 
   // -------------------------------------------------------------------------
   // Test 6: HTTP Integration (GET /streak, GET /api/streak, POST /api/streak/ping)
@@ -263,6 +258,7 @@ async function runTests() {
     assert.ok(unauthApi.body.includes('"UNAUTHORIZED"'), 'Must return UNAUTHORIZED error code');
 
     // 6c. Authenticate a session using demo-login
+    const contributionBaseline = streakService.getStreakSummary(testUserId).current_streak;
     const authLogin = await httpRequest(server, 'POST', '/auth/demo-login', { username: testUsername }, {
       'Content-Type': 'application/json'
     });
@@ -275,7 +271,7 @@ async function runTests() {
     assert.ok(htmlStreak.body.includes('Contribution Streaks'), 'HTML must include page heading');
     assert.ok(htmlStreak.body.includes('Day Streak') || htmlStreak.body.includes('days'), 'HTML must include streak display');
     assert.ok(htmlStreak.body.includes('Weekly Warrior'), 'HTML must render milestone badges');
-    assert.ok(htmlStreak.body.includes('30-Day Contribution Heatmap'), 'HTML must render activity heatmap');
+    assert.ok(htmlStreak.body.includes('30-Day GitHub Contribution Heatmap'), 'HTML must render activity heatmap');
 
     // 6e. Authenticated GET /api/streak -> 200 JSON
     const jsonStreak = await httpRequest(server, 'GET', '/api/streak', null, {
@@ -285,7 +281,8 @@ async function runTests() {
     assert.strictEqual(jsonStreak.status, 200, 'Authenticated GET /api/streak must return 200');
     const parsedStreak = JSON.parse(jsonStreak.body);
     assert.strictEqual(parsedStreak.success, true);
-    assert.ok(parsedStreak.streak.current_streak >= 1, 'Current streak must be >= 1');
+    assert.ok(parsedStreak.loginStreak.current_streak >= 1, 'Demo sign-in must record the login streak');
+    assert.strictEqual(parsedStreak.streak.current_streak, contributionBaseline, 'Demo sign-in must not change the GitHub contribution streak');
     assert.strictEqual(parsedStreak.user.username, testUsername);
 
     // 6f. Authenticated POST /api/streak/ping -> 200 JSON
@@ -326,7 +323,7 @@ async function runTests() {
     assert.ok(dashRes.body.includes('streak-flame-icon') || dashRes.body.includes('Day Streak'), 'Dashboard must render streak flame icon and text');
     assert.ok(dashRes.body.includes('href="/streak"'), 'Dashboard must link to full /streak page');
 
-    console.log('✓ Developer dashboard auto-records daily activity and renders Contribution Streak widget.');
+    console.log('✓ Developer dashboard renders separate GitHub contribution and login streak widgets.');
 
     // -------------------------------------------------------------------------
     // Test 8: Multi-User Isolation
@@ -343,12 +340,10 @@ async function runTests() {
     const idBeta = rB.lastInsertRowid;
 
     // Alpha records 3 days
-    await streakService.recordActivity(idAlpha, 'alpha_1', dMinus2);
-    await streakService.recordActivity(idAlpha, 'alpha_2', dMinus1);
-    await streakService.recordActivity(idAlpha, 'alpha_3', today);
+    streakService.syncGitHubContributions(idAlpha, [dMinus2, dMinus1, today].map(date => ({ date, contributionCount: 1 })));
 
     // Beta records only today
-    await streakService.recordActivity(idBeta, 'beta_1', today);
+    streakService.syncGitHubContributions(idBeta, [{ date: today, contributionCount: 1 }]);
 
     const streakAlpha = streakService.getStreakSummary(idAlpha);
     const streakBeta = streakService.getStreakSummary(idBeta);

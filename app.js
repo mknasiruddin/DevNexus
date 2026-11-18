@@ -91,6 +91,10 @@ app.use("/api/streak", require("./routes/streakRoutes"));
 app.use("/badges", require("./routes/badgeRoutes"));
 app.use("/api/badges", require("./routes/badgeRoutes"));
 
+// --- Activity Stats & Visualization Routes (Member 3) ---
+app.use("/stats", require("./routes/statsRoutes"));
+app.use("/api/stats", require("./routes/statsRoutes"));
+
 // --- Content, Guide & Community Routes ---
 app.use("/", require("./routes/contentRoutes"));
 
