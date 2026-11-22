@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Developer Analytics | DevNexus</title>
+  <meta name="description" content="Comprehensive developer productivity reports, GitHub contribution heatmaps, repository distribution charts, streaks, and period comparisons on DevNexus.">
+  <%- include('partials/theme-script') %>
+  <link rel="stylesheet" href="/css/sparkles.css">
+  <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+  <%- include('partials/sparkles-bg') %>
+
+  <!-- NAVBAR -->
+  <%- include('partials/dashboard-nav', { activePage: 'analytics', siteName: 'DevNexus', user: locals.user, isAdmin: locals.isAdmin || false }) %>
+
+  <!-- DISCLOSURE BANNER -->
+  <aside class="disclosure-banner" aria-label="Developer Analytics Status">
+    <div class="container disclosure-inner">
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <span class="disclosure-badge">Verified Analytics</span>
+        <span>
+          Developer Productivity &amp; Contribution Analytics for <strong>@<%= user.username %></strong>
+          <% if (isGithubConnected && syncState && syncState.githubUsername) { %>
+            &bull; Linked GitHub: <strong>@<%= syncState.githubUsername %></strong>
+          <% } else { %>
+            &bull; GitHub Not Connected
+          <% } %>
+        </span>
+      </div>
+      <div style="display:flex; align-items:center; gap:10px; font-size:12px; font-family:var(--mono); color:var(--accent-text);">
+        <span>
+          <% if (isGithubConnected && syncState && syncState.lastSyncedAt) { %>
+            Last Synced: <%= new Date(syncState.lastSyncedAt).toLocaleString() %>
+          <% } else if (isGithubConnected) { %>
+            Ready to Synchronize
+          <% } else { %>
+            Awaiting GitHub OAuth Link
+          <% } %>
+        </span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN ANALYTICS CONTENT -->
+  <main class="analytics-main" id="main">
+    <div class="container">
+
+      <!-- HERO HEADER -->
+      <section class="analytics-hero-card" aria-label="Developer Analytics Overview">
+        <div>
+          <h1 class="analytics-hero-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent-text)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 4 3 5-6"/></svg>
+            Developer Productivity &amp; Activity Analytics
+          </h1>
+          <p class="analytics-hero-sub">
+            Activity-driven productivity reports across monthly, quarterly, half-yearly, and yearly windows — tracking verified commits, pull requests, issues, code reviews, streaks, and repository impact.
+          </p>
+        </div>
+
+        <div class="analytics-hero-actions">
+          <% if (isGithubConnected) { %>
+            <button type="button" id="analytics-sync-github-btn" class="btn btn-primary btn-sm">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              Sync GitHub Activity
+            </button>
+          <% } else if (isOAuthConfigured) { %>
+            <a href="/auth/github" class="btn btn-primary btn-sm">
+              Connect GitHub Account
+            </a>
+          <% } %>
+          <a href="/streak" class="btn btn-sm">View Streaks</a>
+          <a href="/dashboard" class="btn btn-sm">Dashboard &rarr;</a>
+        </div>
+      </section>
+
+      <!-- EMPTY / UNCONNECTED GITHUB STATE -->
+      <div id="analytics-empty-banner"
+           class="dn-empty-account-banner"
+           data-github-connected="<%= isGithubConnected ? 'true' : 'false' %>"
+           role="status"
+           style="display:<%= !isGithubConnected ? 'flex' : 'none' %>;">
+        <div>
+          <% if (!isGithubConnected) { %>
+            <strong>No GitHub Account Connected Yet</strong> — Connect your GitHub account to import real repositories, commits, pull requests, issues, reviews, and heatmap activity.
+          <% } else { %>
+            <strong>No Verified Activity Synchronized Yet</strong> — Trigger a GitHub sync or record qualifying DevNexus milestones to populate your analytics charts.
+          <% } %>
+        </div>
+        <div>
+          <% if (!isGithubConnected && isOAuthConfigured) { %>
+            <a href="/auth/github" class="btn btn-primary btn-sm">Connect GitHub &rarr;</a>
+          <% } else if (isGithubConnected) { %>
+            <button type="button" id="analytics-empty-sync-btn" class="btn btn-primary btn-sm">Sync Now</button>
+          <% } else { %>
+            <a href="/dashboard" class="btn btn-sm">Open Dashboard</a>
+          <% } %>
+        </div>
+      </div>
+
+      <!-- ANALYTICS MODULE CONTAINER -->
+      <div class="dash-card" id="developer-analytics-module">
+        <div class="dash-card-header">
+          <h2 class="dash-card-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-4 4 3 5-6"/></svg>
+            Productivity Reports &amp; Interactive Date Filters
+          </h2>
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <span class="dn-loading-pill" id="analytics-loading-state" style="display:none;">Updating analytics...</span>
+            <span class="badge-pill" id="analytics-active-period-badge">Loading verified metrics...</span>
+          </div>
+        </div>
+
+        <div class="dash-card-body">
+          <!-- Period & Custom Date Filter Bar -->
+          <div class="dn-analytics-controls" role="region" aria-label="Analytics period and date filters">
+            <div class="dn-period-tabs" role="tablist">
+              <button type="button" class="dn-period-btn active" data-period="monthly">Monthly</button>
+              <button type="button" class="dn-period-btn" data-period="quarterly">Quarterly</button>
+              <button type="button" class="dn-period-btn" data-period="half-yearly">Half-Yearly</button>
+              <button type="button" class="dn-period-btn" data-period="yearly">Yearly</button>
+            </div>
+
+            <div class="dn-filter-selects">
+              <label style="font-size:12px; color:var(--muted); display:inline-flex; align-items:center; gap:4px;">
+                Year
+                <select id="analytics-year-select" class="dn-select" aria-label="Analytics Year">
+                  <% ((initialPayload && initialPayload.availableYears) || [new Date().getUTCFullYear()]).forEach(function(yr) { %>
+                    <option value="<%= yr %>"><%= yr %></option>
+                  <% }); %>
+                </select>
+              </label>
+
+              <span id="analytics-month-wrap">
+                <select id="analytics-month-select" class="dn-select" aria-label="Analytics Month">
+                  <option value="1">January</option><option value="2">February</option><option value="3">March</option>
+                  <option value="4">April</option><option value="5">May</option><option value="6">June</option>
+                  <option value="7">July</option><option value="8">August</option><option value="9">September</option>
+                  <option value="10">October</option><option value="11">November</option><option value="12">December</option>
+                </select>
+              </span>
+
+              <span id="analytics-quarter-wrap" style="display:none;">
+                <select id="analytics-quarter-select" class="dn-select" aria-label="Analytics Quarter">
+                  <option value="1">Q1 (Jan–Mar)</option>
+                  <option value="2">Q2 (Apr–Jun)</option>
+                  <option value="3">Q3 (Jul–Sep)</option>
+                  <option value="4">Q4 (Oct–Dec)</option>
+                </select>
+              </span>
+
+              <span id="analytics-half-wrap" style="display:none;">
+                <select id="analytics-half-select" class="dn-select" aria-label="Analytics Half-Year">
+                  <option value="1">H1 (Jan–Jun)</option>
+                  <option value="2">H2 (Jul–Dec)</option>
+                </select>
+              </span>
+
+              <div class="dn-date-range-inputs" aria-label="Custom date range filter">
+                <label style="font-size:11.5px; color:var(--muted); display:inline-flex; align-items:center; gap:4px;">
+                  From
+                  <input type="date" id="analytics-from-date" class="dn-date-input" aria-label="Filter from date">
+                </label>
+                <label style="font-size:11.5px; color:var(--muted); display:inline-flex; align-items:center; gap:4px;">
+                  To
+                  <input type="date" id="analytics-to-date" class="dn-date-input" aria-label="Filter to date">
+                </label>
+                <button type="button" id="analytics-reset-filters-btn" class="btn btn-sm">Reset</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="analytics-error-banner" class="dn-error-banner" style="display:none;" role="alert"></div>
+
+          <!-- Hero KPI Cards (Verified Metrics, Activity %, Current/Longest Streak, Active Repos) -->
+          <section class="dn-kpi-strip" id="analytics-hero-kpis" aria-label="Key Productivity Indicators">
+            <div class="dn-kpi-card">
+              <div class="dn-kpi-lbl">Verified Activity</div>
+              <div class="dn-kpi-val"><%= (initialPayload && initialPayload.report && initialPayload.report.summary) ? initialPayload.report.summary.totalContributions : 0 %></div>
+              <div class="dn-kpi-sub">Loading active window...</div>
+            </div>
+            <div class="dn-kpi-card">
+              <div class="dn-kpi-lbl">Developer Activity Rate</div>
+              <div class="dn-kpi-val"><%= (initialPayload && initialPayload.report && initialPayload.report.summary) ? initialPayload.report.summary.activityPercentage : 0 %>%</div>
+              <div class="dn-kpi-sub">Active days / eligible days</div>
+            </div>
+            <div class="dn-kpi-card">
+              <div class="dn-kpi-lbl">Current / Longest Streak</div>
+              <div class="dn-kpi-val"><%= streak ? streak.current_streak : 0 %>d / <%= streak ? streak.longest_streak : 0 %>d</div>
+              <div class="dn-kpi-sub"><%= streak ? streak.total_active_days : 0 %> total qualifying days</div>
+            </div>
+            <div class="dn-kpi-card">
+              <div class="dn-kpi-lbl">Total Repositories</div>
+              <div class="dn-kpi-val"><%= repoCounts ? repoCounts.total : 0 %></div>
+              <div class="dn-kpi-sub"><%= repoCounts ? repoCounts.publicCount : 0 %> public &bull; <%= repoCounts ? repoCounts.privateCount : 0 %> private</div>
+              <% if (repoCounts && repoCounts.privateAccessGranted === false && repoCounts.privateAccessNote) { %>
+                <div class="dn-kpi-sub analytics-private-warn">
+                  <%= repoCounts.privateAccessNote %>
+                  <a href="/auth/github" style="margin-left:4px;">Authorize Private Repos &rarr;</a>
+                </div>
+              <% } %>
+            </div>
+          </section>
+
+          <!-- Multi-Horizon Productivity Reports (Monthly, Quarterly, Half-Yearly, Yearly) -->
+          <section class="dn-horizon-cards" id="analytics-horizon-cards" aria-label="Multi-Horizon Productivity Reports"></section>
+
+          <!-- Executive Developer Productivity Report -->
+          <div class="dn-report-box" id="analytics-productivity-report">
+            <div class="dn-report-head">
+              <div>
+                <h3>Detailed Productivity Report</h3>
+                <div class="dn-chart-sub">Period comparison metrics, repository focus, consistency rate, and ranking</div>
+              </div>
+              <button type="button" class="btn btn-sm" id="analytics-export-report-btn">Export Report JSON</button>
+            </div>
+            <div id="analytics-report-container">
+              <div class="dn-chart-sub">Loading verified productivity report...</div>
+            </div>
+          </div>
+
+          <!-- Visualizations Grid -->
+          <div class="dn-charts-grid">
+
+            <!-- Contribution Activity Bar Chart (Monthly Daily Breakdown) -->
+            <div class="dn-chart-panel">
+              <div class="dn-chart-title-row">
+                <h3 class="dn-chart-title">Contribution Activity Bar Chart</h3>
+                <span class="dn-chart-sub" id="chart-monthly-sub">Daily breakdown</span>
+              </div>
+              <div id="chart-monthly-bar"></div>
+            </div>
+
+            <!-- Quarterly Comparison Bar Chart -->
+            <div class="dn-chart-panel">
+              <div class="dn-chart-title-row">
+                <h3 class="dn-chart-title">Quarterly Productivity Bar Chart</h3>
+                <span class="dn-chart-sub" id="chart-quarterly-sub">Q1–Q4 performance</span>
+              </div>
+              <div id="chart-quarterly-bar"></div>
+            </div>
+
+            <!-- Yearly Contribution Line Chart -->
+            <div class="dn-chart-panel">
+              <div class="dn-chart-title-row">
+                <h3 class="dn-chart-title">Yearly Contribution Line Chart</h3>
+                <span class="dn-chart-sub" id="chart-yearly-sub">12-month trajectory</span>
+              </div>
+              <div id="chart-yearly-line"></div>
+            </div>
+
+            <!-- Developer Activity Percentage Gauge + 5-Period Summary -->
+            <div class="dn-chart-panel">
+              <div class="dn-chart-title-row">
+                <h3 class="dn-chart-title">Developer Activity Percentage</h3>
+                <span class="dn-chart-sub">Active Days / Eligible Days</span>
+              </div>
+              <div class="dn-gauge-layout">
+                <div id="chart-activity-gauge"></div>
+                <div class="dn-pct-grid" id="analytics-pct-breakdown"></div>
+              </div>
+            </div>
+
+            <!-- Commit and Pull Request Comparisons -->
+            <div class="dn-chart-panel">
+              <div class="dn-chart-title-row">
+                <h3 class="dn-chart-title">Commit &amp; Pull Request Comparisons</h3>
+                <span class="dn-chart-sub">Commits, PRs Created &amp; Merged</span>
+              </div>
+              <div id="chart-commits-prs"></div>
+            </div>
+
+            <!-- Issues Opened vs Closed & Code Reviews -->
+            <div class="dn-chart-panel">
+              <div class="dn-chart-title-row">
+                <h3 class="dn-chart-title">Issues Opened vs Closed &amp; Reviews</h3>
+                <span class="dn-chart-sub">Issue lifecycle &amp; PR reviews</span>
+              </div>
+              <div id="chart-issues-io"></div>
+            </div>
+
+            <!-- Repository Distribution Doughnut Chart -->
+            <div class="dn-chart-panel">
+              <div class="dn-chart-title-row">
+                <h3 class="dn-chart-title">Repository Distribution Doughnut</h3>
+                <span class="dn-chart-sub">Share of verified activity per repository</span>
+              </div>
+              <div id="chart-repo-donut"></div>
+            </div>
+
+            <!-- Repository Language Distribution Doughnut Chart -->
+            <div class="dn-chart-panel">
+              <div class="dn-chart-title-row">
+                <h3 class="dn-chart-title">Repository Language Distribution</h3>
+                <span class="dn-chart-sub">Synced repositories by primary language</span>
+              </div>
+              <div id="chart-lang-donut"></div>
+            </div>
+
+            <!-- Monthly & Quarterly Productivity Comparisons (Full Width) -->
+            <div class="dn-chart-panel span-2">
+              <div class="dn-chart-title-row">
+                <h3 class="dn-chart-title">Monthly &amp; Quarterly Productivity Comparisons</h3>
+                <span class="dn-chart-sub">Current period vs preceding period deltas</span>
+              </div>
+              <div class="dn-comp-layout" id="analytics-period-comparisons"></div>
+              <div id="chart-period-compare-bars" style="margin-top:10px;"></div>
+            </div>
+
+            <!-- GitHub Contribution Heatmap (Full Width) -->
+            <div class="dn-chart-panel span-2">
+              <div class="dn-chart-title-row">
+                <h3 class="dn-chart-title">GitHub Contribution Heatmap</h3>
+                <span class="dn-chart-sub" id="chart-heatmap-sub">Daily verified activity intensity</span>
+              </div>
+              <div id="chart-heatmap"></div>
+            </div>
+
+            <!-- Repository-wise Activity (Bar + Detailed Breakdown Table) -->
+            <div class="dn-chart-panel span-2">
+              <div class="dn-chart-title-row">
+                <h3 class="dn-chart-title">Repository-Wise Activity</h3>
+                <span class="dn-chart-sub" id="chart-repo-sub">Commits, PRs, issues, reviews &amp; points per repository</span>
+              </div>
+              <div id="chart-repo-breakdown"></div>
+              <div id="analytics-repo-activity-list"></div>
+            </div>
+
+            <!-- Monthly Productivity Growth Chart -->
+            <div class="dn-chart-panel">
+              <div class="dn-chart-title-row">
+                <h3 class="dn-chart-title">Monthly Productivity Growth</h3>
+                <span class="dn-chart-sub">Month-over-Month % delta</span>
+              </div>
+              <div id="chart-monthly-growth"></div>
+            </div>
+
+            <!-- Developer Leaderboard Chart -->
+            <div class="dn-chart-panel">
+              <div class="dn-chart-title-row">
+                <h3 class="dn-chart-title">Community Leaderboard Snapshot</h3>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <select id="analytics-lb-time-select" class="dn-select" style="padding:3px 7px; font-size:11px;" aria-label="Leaderboard Timeframe">
+                    <option value="all-time">All Time</option>
+                    <option value="this-week">Weekly</option>
+                    <option value="this-month">Monthly</option>
+                    <option value="quarterly">Quarterly</option>
+                    <option value="yearly">Yearly</option>
+                  </select>
+                  <a href="/leaderboard" style="font-size:11.5px; color:var(--link);">Full Board &rarr;</a>
+                </div>
+              </div>
+              <div id="chart-leaderboard-mini"></div>
+            </div>
+
+            <!-- Current & Longest Streak History (Full Width) -->
+            <div class="dn-chart-panel span-2">
+              <div class="dn-chart-title-row">
+                <h3 class="dn-chart-title">Current &amp; Longest Streak History</h3>
+                <span class="dn-chart-sub">30-day qualifying activity streak (<a href="/streak" style="color:var(--link);">Manage Streaks</a>)</span>
+              </div>
+              <div id="chart-streak-history"></div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <%- include('partials/footer') %>
+
+  <script src="/js/analytics-charts.js"></script>
+  <script src="/js/analytics.js"></script>
+  <script>
+    (function () {
+      function wireSyncBtn(id) {
+        var btn = document.getElementById(id);
+        if (!btn) return;
+        btn.addEventListener('click', async function () {
+          var originalText = btn.textContent;
+          btn.disabled = true;
+          btn.textContent = 'Synchronizing...';
+          try {
+            var res = await fetch('/dashboard/api/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+              body: JSON.stringify({})
+            });
+            var data = await res.json();
+            if (res.ok && data && data.success && window.DevNexusAnalytics) {
+              window.DevNexusAnalytics.refresh();
+            } else {
+              alert((data && data.message) || 'GitHub sync did not complete.');
+            }
+          } catch (err) {
+            alert('Unable to reach sync service right now.');
+          } finally {
+            btn.disabled = false;
+            btn.textContent = originalText;
+          }
+        });
+      }
+      wireSyncBtn('analytics-sync-github-btn');
+      wireSyncBtn('analytics-empty-sync-btn');
+    })();
+  </script>
+</body>
+</html>

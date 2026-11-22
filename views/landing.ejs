@@ -678,7 +678,7 @@
           <article class="card">
             <div class="card-top">
               <span class="repo"><span>1. Contribution Readiness Score</span></span>
-              <span class="label gfi">0&ndash;100 Rubric</span>
+              <span class="label gfi" id="landing-readiness-badge"><%= user ? (typeof heroReadiness === 'number' ? `${heroReadiness}% Ready` : 'Insufficient Data') : '0–100 Rubric' %></span>
             </div>
             <p>Evaluates your declared programming skills, experience tier, issue difficulty, and missing skill gaps with transparent rule-based calculations.</p>
             <div class="card-foot">
@@ -702,7 +702,7 @@
           <article class="card">
             <div class="card-top">
               <span class="repo"><span>3. First Contribution Roadmap</span></span>
-              <span class="label gfi">14 Stages</span>
+              <span class="label gfi" id="landing-roadmap-badge"><%= user ? `${heroRoadmapCompleted || 0}/14 Stages` : '14 Stages' %></span>
             </div>
             <p>Step-by-step interactive checklist from understanding open source and forking a repo to running tests, opening a PR, and responding to reviews.</p>
             <div class="card-foot">

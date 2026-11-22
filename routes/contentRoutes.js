@@ -6,43 +6,26 @@
 const express = require('express');
 const router = express.Router();
 const {
+  db,
   getLeaderboard,
   getLeaderboardStats,
   setRoadmapStepStatus,
   resetUserRoadmapProgress,
-  findUserById
+  findUserByUsername
 } = require('../db/database');
-const { syncContributorFromGitHub, searchIssues } = require('../services/githubService');
-const { getUserDashboardSyncData } = require('../services/githubSyncService');
-const {
-  getRoadmapStagesWithProgress,
-  calculateContributionReadiness
-} = require('../services/saanviModulesService');
+const { synchronizeUserGitHubActivity } = require('../services/githubSyncService');
+const { getRoadmapStagesWithProgress } = require('../services/saanviModulesService');
+const { computeUserReadinessSnapshot } = require('../services/readinessHelper');
+const streakService = require('../services/streakService');
+const analyticsService = require('../services/analyticsService');
 
-async function computeRoadmapReadiness(req, completedCount) {
-  const freshUser = findUserById(req.user.id) || req.user;
-  let userSkills = [];
-  try {
-    userSkills = JSON.parse(freshUser.skills || '[]');
-  } catch (e) {
-    userSkills = [];
-  }
-  const synced = freshUser.github_id
-    ? getUserDashboardSyncData(freshUser.id, freshUser.github_id, { isSelf: true, repoLimit: 100, activityLimit: 0 })
-    : null;
-  const cachedIssues = await searchIssues(
-    { query: '', label: 'all', language: 'all', page: 1, perPage: 8 },
-    userSkills,
-    req.session ? req.session.githubToken : null,
-    { cacheOnly: true }
-  ).catch(() => ({ issues: [] }));
-  return calculateContributionReadiness(freshUser, cachedIssues.issues || [], {
-    roadmapCompletedCount: completedCount,
-    roadmapVerified: true,
-    repositories: synced ? (synced.repos || []) : [],
-    languageDistribution: synced && synced.syncState ? (synced.syncState.languageDistribution || []) : [],
-    isStale: Boolean(cachedIssues.stale)
+async function computeRoadmapReadiness(req) {
+  const { readiness } = await computeUserReadinessSnapshot(req.user, {
+    isSelf: true,
+    githubToken: req.session ? req.session.githubToken : null,
+    cacheOnly: true
   });
+  return readiness;
 }
 
 
@@ -137,15 +120,30 @@ router.post('/api/roadmap/step', async (req, res) => {
 
   try {
     setRoadmapStepStatus(req.user.id, parsedStep, completed);
+    let streak = null;
+    let platformActivity = null;
+    if (completed) {
+      platformActivity = analyticsService.recordPlatformActivity(req.user.id, {
+        activityType: 'roadmap_stage',
+        uniqueKey: `roadmap_stage:${parsedStep}`,
+        referenceId: String(parsedStep),
+        title: `Completed Roadmap Stage #${parsedStep}`
+      });
+      streak = platformActivity.streak;
+    } else {
+      streak = streakService.getStreakSummary(req.user.id);
+    }
     const updatedRoadmap = getRoadmapStagesWithProgress(req.user.id);
-    const readiness = await computeRoadmapReadiness(req, updatedRoadmap.completedCount);
+    const readiness = await computeRoadmapReadiness(req);
     return res.json({
       success: true,
       stepNumber: parsedStep,
       completed,
       ...updatedRoadmap,
       readinessScore: readiness.score,
-      readiness
+      readiness,
+      streak,
+      platformActivity
     });
   } catch (err) {
     return res.status(400).json({
@@ -165,7 +163,7 @@ router.post('/api/roadmap/reset', async (req, res) => {
   try {
     resetUserRoadmapProgress(req.user.id);
     const updatedRoadmap = getRoadmapStagesWithProgress(req.user.id);
-    const readiness = await computeRoadmapReadiness(req, updatedRoadmap.completedCount);
+    const readiness = await computeRoadmapReadiness(req);
     return res.json({
       success: true,
       ...updatedRoadmap,
@@ -221,12 +219,14 @@ router.get('/leaderboard', async (req, res) => {
     const category = ['top', 'active', 'rising'].includes(rawCategory) ? rawCategory : 'top';
 
     const rawTime = (req.query.time || 'all-time').toLowerCase();
-    const time = ['all-time', 'this-month', 'this-week'].includes(rawTime) ? rawTime : 'all-time';
+    const allowedTimes = ['all-time', 'this-week', 'weekly', 'this-month', 'monthly', 'this-quarter', 'quarterly', 'this-year', 'yearly'];
+    const time = allowedTimes.includes(rawTime) ? rawTime : 'all-time';
 
     const search = (req.query.q || req.query.search || '').trim();
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
 
-    const stats = getLeaderboardStats();
+    analyticsService.backfillVerifiedContributorsToLeaderboard(50);
+    const stats = getLeaderboardStats({ time });
 
     const leaderboardData = getLeaderboard({
       category,
@@ -292,44 +292,78 @@ router.get('/leaderboard', async (req, res) => {
   }
 });
 
-// Sync or Index Any Genuine GitHub Contributor Live
+// Sync or Refresh a Genuine Registered DevNexus User's GitHub Leaderboard Profile
 router.post('/leaderboard/sync', async (req, res) => {
   const username = (req.body && req.body.username ? req.body.username : '').trim().replace(/^@/, '');
   const category = req.body.category || 'top';
   const time = req.body.time || 'all-time';
 
+  const wantsJsonRes = Boolean(req.xhr || (req.headers.accept && req.headers.accept.includes('application/json')));
+
+  if (!req.user) {
+    if (wantsJsonRes) return res.status(401).json({ success: false, error: 'Authentication required to refresh contributor rankings.' });
+    return res.redirect('/login');
+  }
+
+  let targetUser = null;
   if (!username) {
-    if (req.xhr || (req.headers.accept && req.headers.accept.includes('application/json'))) {
-      return res.status(400).json({ success: false, error: 'Please enter a valid GitHub username.' });
+    targetUser = req.user;
+  } else {
+    targetUser = db.prepare(`
+      SELECT u.*
+      FROM users u
+      LEFT JOIN github_sync_states gss ON (gss.user_id = u.id AND u.github_id IS NOT NULL AND gss.github_id = u.github_id)
+      WHERE u.status = 'active'
+        AND u.role != 'admin'
+        AND COALESCE(u.is_synthetic, 0) = 0
+        AND (LOWER(u.username) = LOWER(?) OR LOWER(COALESCE(gss.github_username, '')) = LOWER(?))
+      LIMIT 1
+    `).get(username, username);
+  }
+
+  if (!targetUser || !targetUser.github_id) {
+    const errMsg = !targetUser
+      ? `No registered DevNexus developer matching "@${username}" was found. Only registered DevNexus users appear on the leaderboard.`
+      : `@${targetUser.username} has not connected a GitHub account yet.`;
+    if (wantsJsonRes) {
+      return res.status(400).json({ success: false, error: errMsg });
     }
-    if (req.session) req.session.flashError = 'Please enter a valid GitHub username to index.';
-    return res.redirect(`/leaderboard?category=${category}&time=${time}`);
+    if (req.session) req.session.flashError = errMsg;
+    return res.redirect(`/leaderboard?category=${category}&time=${time}${username ? `&q=${encodeURIComponent(username)}` : ''}`);
   }
 
   try {
-    const token = req.session ? req.session.githubAccessToken : null;
-    const syncResult = await syncContributorFromGitHub(username, token);
+    const token = (req.session && targetUser.id === req.user.id)
+      ? (req.session.githubAccessToken || req.session.githubToken || null)
+      : null;
+    const syncRes = await synchronizeUserGitHubActivity(targetUser.id, {
+      sessionToken: token,
+      respectManualCooldown: true
+    });
 
-    const message = `Successfully indexed @${syncResult.contributor.username}! Verified ${syncResult.totalEventsFound} GitHub event(s).`;
+    if (!syncRes || !syncRes.ok) {
+      throw new Error((syncRes && syncRes.message) || 'Unable to synchronize GitHub activity right now.');
+    }
 
-    if (req.xhr || (req.headers.accept && req.headers.accept.includes('application/json'))) {
+    const message = syncRes.message || `Successfully synchronized @${targetUser.username} on DevNexus Leaderboard.`;
+    if (wantsJsonRes) {
       return res.json({
         success: true,
         message,
-        contributor: syncResult.contributor,
-        eventsCount: syncResult.totalEventsFound
+        userId: targetUser.id,
+        syncState: syncRes.syncState
       });
     }
 
     if (req.session) req.session.flashSuccess = message;
-    return res.redirect(`/leaderboard?category=${category}&time=${time}&q=${encodeURIComponent(username)}&synced=${encodeURIComponent(username)}`);
+    return res.redirect(`/leaderboard?category=${category}&time=${time}&q=${encodeURIComponent(targetUser.username)}&synced=${encodeURIComponent(targetUser.username)}`);
   } catch (err) {
-    console.warn(`[Leaderboard Sync Error] for @${username}:`, err.message);
-    if (req.xhr || (req.headers.accept && req.headers.accept.includes('application/json'))) {
+    console.warn(`[Leaderboard Sync Error] for @${username || req.user.username}:`, err.message);
+    if (wantsJsonRes) {
       return res.status(400).json({ success: false, error: err.message });
     }
     if (req.session) req.session.flashError = err.message;
-    return res.redirect(`/leaderboard?category=${category}&time=${time}&q=${encodeURIComponent(username)}`);
+    return res.redirect(`/leaderboard?category=${category}&time=${time}${username ? `&q=${encodeURIComponent(username)}` : ''}`);
   }
 });
 

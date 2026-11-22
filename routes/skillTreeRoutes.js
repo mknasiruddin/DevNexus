@@ -7,16 +7,25 @@ const express = require('express');
 const router = express.Router();
 const { requireAuth } = require('../services/authService');
 const skillTreeService = require('../services/skillTreeService');
-const { getUserRepositories } = require('../services/githubService');
+const { getUserDashboardSyncData } = require('../services/githubSyncService');
+const analyticsService = require('../services/analyticsService');
+
+function getAuthenticatedUserReposForSkillTree(user) {
+  if (!user || !user.id || !user.github_id) {
+    return [];
+  }
+  const synced = getUserDashboardSyncData(user.id, user.github_id, {
+    isSelf: true,
+    repoLimit: null,
+    activityLimit: 0
+  });
+  return Array.isArray(synced && synced.repos) ? synced.repos : [];
+}
 
 async function handleGetSkillTreeJson(req, res) {
   try {
-    const { repos } = await getUserRepositories(
-      req.user.username,
-      req.session.githubToken,
-      { sort: 'updated', perPage: 20 }
-    );
-    const tree = await skillTreeService.evaluateUserSkillTree(req.user.id, req.user, repos || []);
+    const repos = getAuthenticatedUserReposForSkillTree(req.user);
+    const tree = await skillTreeService.evaluateUserSkillTree(req.user.id, req.user, repos);
     res.json({
       success: true,
       tree,
@@ -30,17 +39,27 @@ async function handleGetSkillTreeJson(req, res) {
 
 async function handleUnlockNode(req, res) {
   try {
-    const { repos } = await getUserRepositories(
-      req.user.username,
-      req.session.githubToken,
-      { sort: 'updated', perPage: 20 }
-    );
-    const tree = await skillTreeService.evaluateUserSkillTree(req.user.id, req.user, repos || []);
+    const repos = getAuthenticatedUserReposForSkillTree(req.user);
+    const tree = await skillTreeService.evaluateUserSkillTree(req.user.id, req.user, repos);
     const result = await skillTreeService.claimSkillNode(req.user.id, req.params.nodeId, tree);
+    if (!result || !result.success) {
+      return res.status(400).json({
+        success: false,
+        error: (result && result.error) || 'Skill node cannot be unlocked yet.'
+      });
+    }
+    const platformActivity = analyticsService.recordPlatformActivity(req.user.id, {
+      activityType: 'skill_task',
+      uniqueKey: `skill_task:${result.node.id}`,
+      referenceId: result.node.id,
+      title: `Completed Skill Task: ${result.node.title}`,
+      metadata: { track: result.node.track, xpEarned: result.xpEarned || 0 }
+    });
     res.json({
       success: true,
       node: result.node,
-      xpEarned: result.xpEarned
+      xpEarned: result.xpEarned,
+      platformActivity
     });
   } catch (err) {
     console.error('[DevNexus] Skill node unlock error:', err);
@@ -54,12 +73,8 @@ router.get('/', requireAuth, async (req, res) => {
     return handleGetSkillTreeJson(req, res);
   }
   try {
-    const { repos } = await getUserRepositories(
-      req.user.username,
-      req.session.githubToken,
-      { sort: 'updated', perPage: 20 }
-    );
-    const tree = await skillTreeService.evaluateUserSkillTree(req.user.id, req.user, repos || []);
+    const repos = getAuthenticatedUserReposForSkillTree(req.user);
+    const tree = await skillTreeService.evaluateUserSkillTree(req.user.id, req.user, repos);
     res.render('skill-tree', {
       siteName: 'DevNexus',
       activePage: 'skill-tree',

@@ -29,7 +29,7 @@ const {
   findUserByUsername,
   getAllUsers
 } = require('../db/database');
-const { SKILL_ALIASES } = require('./techCatalog');
+const { TECH_CATEGORIES, SKILL_ALIASES } = require('./techCatalog');
 
 const {
   calculateRepositoryHealth,
@@ -284,7 +284,7 @@ function getOAuthAuthorizeUrl(state, req = null) {
   if (!isOAuthConfigured()) return null;
   const clientId = process.env.GITHUB_CLIENT_ID.trim();
   const callbackUrl = getCallbackUrl(req);
-  const scope = 'read:user,user:email';
+  const scope = 'read:user user:email repo';
   return `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(callbackUrl)}&scope=${encodeURIComponent(scope)}&state=${encodeURIComponent(state)}`;
 }
 
@@ -381,7 +381,12 @@ async function getAuthenticatedUser(accessToken) {
     }
   }
 
-  return { user: { ...user, email }, rateLimit };
+  const rawScopes = readHeader(res.headers, 'x-oauth-scopes');
+  const scopes = rawScopes
+    ? rawScopes.split(',').map(s => s.trim()).filter(Boolean)
+    : [];
+
+  return { user: { ...user, email }, rateLimit, scopes, rawScopes: rawScopes || null };
 }
 
 async function getUserProfile(username, token = null, { fetchImpl = fetch } = {}) {
@@ -389,7 +394,7 @@ async function getUserProfile(username, token = null, { fetchImpl = fetch } = {}
   if (!cleanUser) {
     return { user: null, rateLimit: null, error: 'INVALID_USERNAME' };
   }
-  const cacheKey = `user_profile:${cleanUser.toLowerCase()}`;
+  const cacheKey = `user_profile:${getTokenScopeKey(token)}:${cleanUser.toLowerCase()}`;
   const cached = getCached(cacheKey);
   if (cached) {
     return {
@@ -484,7 +489,7 @@ async function getUserRepositories(username, token = null, { sort = 'updated', p
   if (!cleanUser) {
     return { repos: [], rateLimit: null, error: 'INVALID_USERNAME' };
   }
-  const cacheKey = `user_repos:${cleanUser.toLowerCase()}:${sort}:${perPage}`;
+  const cacheKey = `user_repos:${getTokenScopeKey(token)}:${cleanUser.toLowerCase()}:${sort}:${perPage}`;
 
   const hydrateRepos = (rawList) => (Array.isArray(rawList) ? rawList : []).map(r => ({
     ...r,
@@ -593,9 +598,12 @@ async function getUserRepositories(username, token = null, { sort = 'updated', p
         id: r.id,
         name: r.name,
         fullName: r.full_name,
+        ownerLogin: r.owner ? r.owner.login : cleanUser,
+        ownerType: r.owner ? (r.owner.type || 'User') : 'User',
+        isPrivate: Boolean(r.private),
         description: r.description || 'No description provided.',
         htmlUrl: r.html_url,
-        language: r.language || 'Markdown',
+        language: r.language || 'Other',
         stars: r.stargazers_count,
         forks: r.forks_count,
         openIssues: r.open_issues_count,
@@ -751,6 +759,9 @@ function enrichIssueForUser(issue, userSkills = []) {
     {
       title: issue.title,
       body: issue.body || '',
+      language: issue.language || issue.repoLanguage || null,
+      repoLanguage: issue.repoLanguage || issue.language || null,
+      repoTopics: issue.repoTopics || issue.topics || [],
       comments: issue.commentsCount ?? issue.comments ?? 0,
       created_at: issue.createdAtExact || issue.created_at || null
     },
@@ -762,44 +773,175 @@ function enrichIssueForUser(issue, userSkills = []) {
   return {
     ...issue,
     compatibilityScore: compat.score,
-    compatibilityBreakdown: compat.breakdown
+    compatibilityBreakdown: compat.breakdown,
+    matchedSkills: compat.breakdown.matchedSkills,
+    missingSkills: compat.breakdown.missingSkills,
+    requiredSkills: compat.breakdown.requiredSkills,
+    matchReason: compat.breakdown.matchReason
   };
+}
+
+function enrichAndRankIssues(issues = [], userSkills = []) {
+  if (!Array.isArray(issues)) return [];
+  return issues
+    .map((iss, idx) => ({ item: enrichIssueForUser(iss, userSkills), idx }))
+    .sort((a, b) => {
+      const scoreDiff = (b.item.compatibilityScore || 0) - (a.item.compatibilityScore || 0);
+      if (scoreDiff !== 0) return scoreDiff;
+      const overlapDiff = (b.item.compatibilityBreakdown?.skillOverlap || 0) - (a.item.compatibilityBreakdown?.skillOverlap || 0);
+      if (overlapDiff !== 0) return overlapDiff;
+      const matchedDiff = (b.item.compatibilityBreakdown?.matchedSkills?.length || 0) - (a.item.compatibilityBreakdown?.matchedSkills?.length || 0);
+      if (matchedDiff !== 0) return matchedDiff;
+      return a.idx - b.idx;
+    })
+    .map(entry => entry.item);
+}
+
+async function hydrateIssueRepoMetadata(issues = [], { languageFilter = 'all', token = null, fetchImpl = fetch, rateLimit = null } = {}) {
+  if (!Array.isArray(issues) || issues.length === 0) return [];
+  const filterLang = (languageFilter && languageFilter !== 'all') ? formatSkillDisplay(languageFilter) : null;
+  const uniqueRepos = [...new Set(issues.map(i => i.repoName).filter(Boolean))];
+  const metaMap = new Map();
+
+  // First pass: check local SQLite repo_meta cache (0 network cost)
+  const uncachedRepos = [];
+  for (const repoName of uniqueRepos) {
+    const metaKey = `repo_meta:${repoName.toLowerCase()}`;
+    const cachedMeta = getCached(metaKey, { allowStale: true });
+    if (cachedMeta && cachedMeta.data) {
+      metaMap.set(repoName.toLowerCase(), cachedMeta.data);
+    } else {
+      uncachedRepos.push(repoName);
+    }
+  }
+
+  // Second pass: optionally fetch up to 5 uncached repo metadata records only when authenticated and quota is healthy
+  const hasToken = Boolean(getEffectiveToken(token));
+  const coreBlocked = Boolean(getActiveRateLimitBlock('core', token));
+  const canFetchMeta = hasToken && !coreBlocked && rateLimit && Number(rateLimit.remaining) >= 15;
+  if (canFetchMeta && uncachedRepos.length > 0) {
+    for (const repoName of uncachedRepos.slice(0, 5)) {
+      try {
+        const { res } = await safeGithubFetch(`${GITHUB_API_BASE}/repos/${repoName}`, token, fetchImpl);
+        if (res && res.ok) {
+          const repoJson = await res.json();
+          const meta = {
+            language: repoJson.language || null,
+            topics: Array.isArray(repoJson.topics) ? repoJson.topics.slice(0, 8) : []
+          };
+          setCache(`repo_meta:${repoName.toLowerCase()}`, meta, {}, 86400);
+          metaMap.set(repoName.toLowerCase(), meta);
+        }
+      } catch (e) {
+        // Non-critical repo enrichment failure
+      }
+    }
+  }
+
+  return issues.map(iss => {
+    const meta = iss.repoName ? metaMap.get(iss.repoName.toLowerCase()) : null;
+    const resolvedLang = iss.repoLanguage || iss.language || (meta && meta.language) || filterLang || null;
+    const resolvedTopics = (Array.isArray(iss.repoTopics) && iss.repoTopics.length > 0)
+      ? iss.repoTopics
+      : (meta && Array.isArray(meta.topics) ? meta.topics : []);
+    return {
+      ...iss,
+      repoLanguage: resolvedLang,
+      repoTopics: resolvedTopics
+    };
+  });
+}
+
+const GITHUB_LANGUAGE_QUALIFIERS = Object.freeze({
+  javascript: 'javascript',
+  typescript: 'typescript',
+  python: 'python',
+  java: 'java',
+  'c++': 'cpp',
+  'c#': 'csharp',
+  c: 'c',
+  go: 'go',
+  rust: 'rust',
+  ruby: 'ruby',
+  php: 'php',
+  swift: 'swift',
+  kotlin: 'kotlin',
+  dart: 'dart',
+  scala: 'scala',
+  r: 'r',
+  elixir: 'elixir',
+  haskell: 'haskell',
+  lua: 'lua',
+  'shell / bash': 'shell',
+  html5: 'html',
+  css3: 'css'
+});
+
+function extractGithubSearchLanguages(userSkills = []) {
+  const canonicals = normalizeCompatibilitySkills(userSkills);
+  const langs = [];
+  for (const c of canonicals) {
+    const q = GITHUB_LANGUAGE_QUALIFIERS[c];
+    if (q && !langs.includes(q)) {
+      langs.push(q);
+      if (langs.length >= 4) break;
+    }
+  }
+  return langs;
 }
 
 async function searchIssues({ query = '', label = 'all', language = 'all', difficulty = 'all', page = 1, perPage = 10 } = {}, userSkills = [], token = null, { cacheOnly = false, fetchImpl = fetch } = {}) {
   const safePage = Math.max(1, Math.min(100, parseInt(page, 10) || 1));
   const safePerPage = Math.max(1, Math.min(50, parseInt(perPage, 10) || 10));
 
-  // Build GitHub Search Query String
-  // Format: is:issue is:open [label:...] [language:...] [keywords]
-  let qParts = ['is:issue', 'is:open'];
+  const trimmedQuery = String(query || '').trim();
+  const normalizedUserLangs = extractGithubSearchLanguages(userSkills);
+  const normalizedUserSkills = normalizeCompatibilitySkills(userSkills);
+  const isDefaultRecommendedFeed = (!trimmedQuery && label === 'all' && language === 'all');
 
-  if (query && query.trim() !== '') {
-    qParts.push(query.trim());
+  let useAdvancedSearch = false;
+  let queryString = '';
+
+  if (isDefaultRecommendedFeed) {
+    if (normalizedUserLangs.length > 0) {
+      const langClause = normalizedUserLangs.length === 1
+        ? `language:${normalizedUserLangs[0]}`
+        : `(${normalizedUserLangs.map(l => `language:${l}`).join(' OR ')})`;
+      queryString = `is:issue AND is:open AND (label:"good first issue" OR label:"help wanted") AND ${langClause}`;
+      useAdvancedSearch = true;
+    } else if (normalizedUserSkills.length > 0) {
+      const kwList = normalizedUserSkills.slice(0, 3).map(s => `"${s.replace(/"/g, '')}"`);
+      const kwClause = kwList.length === 1 ? kwList[0] : `(${kwList.join(' OR ')})`;
+      queryString = `is:issue AND is:open AND (label:"good first issue" OR label:"help wanted") AND ${kwClause}`;
+      useAdvancedSearch = true;
+    } else {
+      queryString = 'is:issue is:open label:"good first issue"';
+    }
+  } else {
+    let qParts = ['is:issue', 'is:open'];
+    if (trimmedQuery !== '') {
+      qParts.push(trimmedQuery);
+    }
+    if (label === 'good-first-issue') {
+      qParts.push('label:"good first issue"');
+    } else if (label === 'help-wanted') {
+      qParts.push('label:"help wanted"');
+    } else if (label && label !== 'all') {
+      qParts.push(`label:"${label}"`);
+    }
+    if (language && language !== 'all') {
+      qParts.push(`language:${language.toLowerCase()}`);
+    }
+    queryString = qParts.join(' ');
   }
 
-  // Label filtering
-  if (label === 'good-first-issue') {
-    qParts.push('label:"good first issue"');
-  } else if (label === 'help-wanted') {
-    qParts.push('label:"help wanted"');
-  } else if (label && label !== 'all') {
-    qParts.push(`label:"${label}"`);
-  }
-
-  // Language filtering
-  if (language && language !== 'all') {
-    qParts.push(`language:${language.toLowerCase()}`);
-  }
-
-  const queryString = qParts.join(' ');
   const cacheKey = `issue_search:${queryString}:${safePage}:${safePerPage}`;
 
   // Check fresh cache (10 min TTL)
   const cached = getCached(cacheKey);
   if (cached) {
     const cachedIssues = Array.isArray(cached.data?.issues)
-      ? cached.data.issues.map(iss => enrichIssueForUser(iss, userSkills))
+      ? enrichAndRankIssues(cached.data.issues, userSkills)
       : [];
     return {
       ...cached.data,
@@ -815,7 +957,7 @@ async function searchIssues({ query = '', label = 'all', language = 'all', diffi
     const stale = getCached(cacheKey, { allowStale: true });
     if (stale) {
       const staleIssues = Array.isArray(stale.data?.issues)
-        ? stale.data.issues.map(iss => enrichIssueForUser(iss, userSkills))
+        ? enrichAndRankIssues(stale.data.issues, userSkills)
         : [];
       return {
         ...stale.data,
@@ -834,7 +976,7 @@ async function searchIssues({ query = '', label = 'all', language = 'all', diffi
     if (activeBlock) {
       const stale = getCached(cacheKey, { allowStale: true });
       const staleIssues = stale && Array.isArray(stale.data?.issues)
-        ? stale.data.issues.map(iss => enrichIssueForUser(iss, userSkills))
+        ? enrichAndRankIssues(stale.data.issues, userSkills)
         : [];
       return {
         ...(stale ? stale.data : { totalCount: 0, page: safePage, perPage: safePerPage, totalPages: 0 }),
@@ -859,15 +1001,16 @@ async function searchIssues({ query = '', label = 'all', language = 'all', diffi
       };
     }
 
-    const url = `${GITHUB_API_BASE}/search/issues?q=${encodeURIComponent(queryString)}&sort=updated&order=desc&page=${safePage}&per_page=${safePerPage}`;
-    const { res, networkError } = await safeGithubFetch(url, token, fetchImpl);
+    const advParam = useAdvancedSearch ? '&advanced_search=true' : '';
+    const url = `${GITHUB_API_BASE}/search/issues?q=${encodeURIComponent(queryString)}${advParam}&sort=updated&order=desc&page=${safePage}&per_page=${safePerPage}`;
+    let { res, networkError } = await safeGithubFetch(url, token, fetchImpl);
 
     if (networkError || !res) {
       const stale = getCached(cacheKey, { allowStale: true });
       if (stale) {
         return {
           ...stale.data,
-          issues: (stale.data?.issues || []).map(iss => enrichIssueForUser(iss, userSkills)),
+          issues: enrichAndRankIssues(stale.data?.issues || [], userSkills),
           rateLimit: stale.headers.rateLimit || null,
           cached: true,
           stale: true,
@@ -901,7 +1044,7 @@ async function searchIssues({ query = '', label = 'all', language = 'all', diffi
       return {
         ...(stale ? stale.data : { totalCount: 0, page: safePage, perPage: safePerPage, totalPages: 0 }),
         issues: stale && Array.isArray(stale.data?.issues)
-          ? stale.data.issues.map(iss => enrichIssueForUser(iss, userSkills))
+          ? enrichAndRankIssues(stale.data.issues, userSkills)
           : [],
         rateLimit: rateLimit ? { ...rateLimit, resetEpoch: rlClass.resetEpoch || rateLimit.resetEpoch, resetAtIso: rlClass.resetAtIso || rateLimit.resetAtIso, rateLimitType: rlClass.rateLimitType } : null,
         cached: Boolean(stale),
@@ -919,7 +1062,7 @@ async function searchIssues({ query = '', label = 'all', language = 'all', diffi
       if (stale) {
         return {
           ...stale.data,
-          issues: (stale.data?.issues || []).map(iss => enrichIssueForUser(iss, userSkills)),
+          issues: enrichAndRankIssues(stale.data?.issues || [], userSkills),
           rateLimit,
           cached: true,
           stale: true,
@@ -939,12 +1082,23 @@ async function searchIssues({ query = '', label = 'all', language = 'all', diffi
       };
     }
 
-    const data = await res.json();
+    let data = await res.json();
+    if (isDefaultRecommendedFeed && safePage === 1 && (!Array.isArray(data.items) || data.items.length === 0) && normalizedUserLangs.length > 0 && (!rateLimit || rateLimit.remaining > 2)) {
+      const langClause = normalizedUserLangs.length === 1
+        ? `language:${normalizedUserLangs[0]}`
+        : `(${normalizedUserLangs.map(l => `language:${l}`).join(' OR ')})`;
+      const fallbackQ = `is:issue AND is:open AND ${langClause}`;
+      const fallbackUrl = `${GITHUB_API_BASE}/search/issues?q=${encodeURIComponent(fallbackQ)}&advanced_search=true&sort=updated&order=desc&page=${safePage}&per_page=${safePerPage}`;
+      const fbRes = await safeGithubFetch(fallbackUrl, token, fetchImpl);
+      if (fbRes && fbRes.res && fbRes.res.ok) {
+        data = await fbRes.res.json();
+      }
+    }
     const totalCount = data.total_count || 0;
     const totalPages = Math.min(Math.ceil(totalCount / safePerPage), 100); // GitHub limits search pagination to top 1,000 results
 
     // Process & normalize raw issue items before applying per-user compatibility scoring
-    const baseIssues = (data.items || []).map(item => {
+    const rawBaseIssues = (data.items || []).map(item => {
       const repoMatch = (item.repository_url || '').match(/repos\/(.+?\/.+?)$/);
       const repoName = repoMatch ? repoMatch[1] : '';
 
@@ -979,6 +1133,13 @@ async function searchIssues({ query = '', label = 'all', language = 'all', diffi
       };
     });
 
+    const baseIssues = await hydrateIssueRepoMetadata(rawBaseIssues, {
+      languageFilter: language,
+      token,
+      fetchImpl,
+      rateLimit
+    });
+
     const basePayload = {
       issues: baseIssues,
       totalCount,
@@ -988,17 +1149,89 @@ async function searchIssues({ query = '', label = 'all', language = 'all', diffi
     };
 
     setCache(cacheKey, basePayload, { rateLimit }, 600); // 10 min cache (user-agnostic base payload)
-    const issues = baseIssues.map(iss => enrichIssueForUser(iss, userSkills));
+    const issues = enrichAndRankIssues(baseIssues, userSkills);
     return { ...basePayload, issues, rateLimit, cached: false, stale: false };
   }).then(result => ({
     ...result,
-    issues: Array.isArray(result.issues) ? result.issues.map(iss => enrichIssueForUser(iss, userSkills)) : []
+    issues: Array.isArray(result.issues) ? enrichAndRankIssues(result.issues, userSkills) : []
   }));
 }
 
 // ----------------------------------------------------
 // 4. Algorithmic Skill Compatibility Calculator
 // ----------------------------------------------------
+const ALIAS_TO_CANONICAL = {};
+const CANONICAL_DISPLAY_NAMES = {};
+const CANONICAL_SCAN_TERMS = {};
+
+for (const category of TECH_CATEGORIES) {
+  for (const tech of category.technologies) {
+    const canonical = tech.name.toLowerCase();
+    CANONICAL_DISPLAY_NAMES[canonical] = tech.name;
+    const aliases = Array.isArray(tech.aliases) ? tech.aliases.map(a => a.toLowerCase()) : [canonical];
+    const terms = [...new Set([canonical, ...aliases])];
+    CANONICAL_SCAN_TERMS[canonical] = terms;
+    for (const term of terms) {
+      if (!ALIAS_TO_CANONICAL[term]) {
+        ALIAS_TO_CANONICAL[term] = canonical;
+      }
+    }
+  }
+}
+
+Object.assign(ALIAS_TO_CANONICAL, {
+  js: 'javascript',
+  javascript: 'javascript',
+  ts: 'typescript',
+  typescript: 'typescript',
+  py: 'python',
+  python: 'python',
+  node: 'node.js',
+  nodejs: 'node.js',
+  'node.js': 'node.js',
+  react: 'react',
+  reactjs: 'react',
+  'react.js': 'react',
+  vue: 'vue.js',
+  vuejs: 'vue.js',
+  'vue.js': 'vue.js',
+  express: 'express.js',
+  expressjs: 'express.js',
+  'express.js': 'express.js',
+  golang: 'go',
+  go: 'go',
+  cpp: 'c++',
+  'c++': 'c++',
+  csharp: 'c#',
+  'c#': 'c#',
+  html: 'html5',
+  html5: 'html5',
+  css: 'css3',
+  css3: 'css3',
+  documentation: 'docs',
+  docs: 'docs',
+  rest: 'rest apis',
+  'rest api': 'rest apis',
+  restful: 'rest apis',
+  bash: 'shell / bash',
+  shell: 'shell / bash',
+  zsh: 'shell / bash'
+});
+
+function toCanonicalSkill(raw) {
+  const clean = String(raw || '').trim().toLowerCase();
+  if (!clean) return '';
+  return ALIAS_TO_CANONICAL[clean] || clean;
+}
+
+function formatSkillDisplay(canonicalOrRaw) {
+  const canonical = toCanonicalSkill(canonicalOrRaw);
+  if (!canonical) return '';
+  if (CANONICAL_DISPLAY_NAMES[canonical]) return CANONICAL_DISPLAY_NAMES[canonical];
+  const raw = String(canonicalOrRaw || '').trim();
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
 function normalizeCompatibilitySkills(skills = []) {
   const values = Array.isArray(skills) ? skills : [];
 
@@ -1009,99 +1242,254 @@ function normalizeCompatibilitySkills(skills = []) {
         if (skill && typeof skill.name === 'string') return skill.name;
         return '';
       })
-      .map(skill => skill.trim().toLowerCase())
+      .map(skill => toCanonicalSkill(skill))
       .filter(Boolean)
   )];
 }
 
-const COMPATIBILITY_SKILL_ALIASES = {
-  ...SKILL_ALIASES,
-  javascript: ['javascript', 'js', 'node.js', 'nodejs'],
-  'react.js': ['react', 'react.js']
-};
+const AMBIGUOUS_SHORT_TOKENS = new Set([
+  'c', 'r', 'go', 'sh', 'md', 'ui', 'cv', 'ai', 'ci', 'cd',
+  'js', 'ts', 'py', 'rb', 'kt', 'tf', 'xd',
+  'express', 'rest', 'next', 'nest', 'spring', 'compose', 'elastic', 'gin', 'torch', 'workflows'
+]);
 
-function matchSkillsAgainstCorpus(skills, textCorpus) {
-  return skills.filter(skill => {
-    const terms = COMPATIBILITY_SKILL_ALIASES[skill] || [skill];
-    return terms.some(term => {
-      const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const pattern = new RegExp(`(^|[^a-z0-9+#])${escapedTerm}($|[^a-z0-9+#])`, 'i');
-      return pattern.test(textCorpus);
-    });
-  });
-}
+function extractTechnologiesFromText(text, { strictShortTokens = true } = {}) {
+  const detected = new Set();
+  if (!text || typeof text !== 'string') return detected;
+  const trimmed = text.trim();
+  if (!trimmed) return detected;
 
-function calculateCompatibility(issue, repoName, labels, userSkills = [], requestedDifficulty = 'all') {
-  // Weighted profile matching: skills 45%, difficulty 30%, engagement 15%, freshness 10%.
-  const skills = normalizeCompatibilitySkills(userSkills);
-  const labelNames = (labels || []).map(label => String(label.name || '').toLowerCase());
+  for (const [canonical, terms] of Object.entries(CANONICAL_SCAN_TERMS)) {
+    for (const term of terms) {
+      if (strictShortTokens && AMBIGUOUS_SHORT_TOKENS.has(term)) {
+        // Guard ambiguous English words and short abbreviations during free-text prose scanning
+        if (term === 'go') {
+          if (/(^|[^a-zA-Z0-9])Go([^a-zA-Z0-9]|$)/.test(trimmed) || /\bgolang\b/i.test(trimmed)) {
+            detected.add(canonical);
+            break;
+          }
+        } else if (term === 'c') {
+          if (/(^|[^a-zA-Z0-9+])(ANSI\s+C|C\s+language|C\/C\+\+)([^a-zA-Z0-9+]|$)/i.test(trimmed)) {
+            detected.add(canonical);
+            break;
+          }
+        } else if (term === 'r') {
+          if (/(^|[^a-zA-Z0-9])(R\s+language|R\s+programming|RStudio|rlang)([^a-zA-Z0-9]|$)/i.test(trimmed)) {
+            detected.add(canonical);
+            break;
+          }
+        } else if (term === 'rest') {
+          if (/(^|[^a-zA-Z0-9])(REST|REST\s+API|RESTful)([^a-zA-Z0-9]|$)/.test(trimmed)) {
+            detected.add(canonical);
+            break;
+          }
+        } else if (term === 'express') {
+          if (/\bExpress\.js\b/i.test(trimmed) || /\bexpressjs\b/i.test(trimmed)) {
+            detected.add(canonical);
+            break;
+          }
+        } else if (term === 'spring') {
+          if (/\bSpring\s+Boot\b/i.test(trimmed) || /\bSpring\s+Framework\b/i.test(trimmed)) {
+            detected.add(canonical);
+            break;
+          }
+        }
+        continue;
+      }
 
-  const textCorpus = [
-    repoName,
-    issue.title,
-    issue.body,
-    ...(labels || []).map(label => label.name)
-  ].filter(Boolean).join(' ').toLowerCase();
-
-  const matchedSkills = matchSkillsAgainstCorpus(skills, textCorpus);
-
-  const skillOverlapScore = skills.length === 0
-    ? 80
-    : Math.round((matchedSkills.length / skills.length) * 100);
-
-  const isGoodFirstIssue = labelNames.some(name =>
-    name.includes('good first issue') || name.includes('beginner')
-  );
-
-  const isHelpWanted = labelNames.some(name => name.includes('help wanted'));
-
-  let difficultyScore = isGoodFirstIssue ? 95 : isHelpWanted ? 90 : 75;
-
-  const requested = String(requestedDifficulty || 'all').toLowerCase();
-
-  if (requested !== 'all') {
-    const issueLevel = isGoodFirstIssue
-      ? 'beginner'
-      : isHelpWanted
-        ? 'intermediate'
-        : 'advanced';
-
-    difficultyScore = requested === issueLevel
-      ? Math.min(100, difficultyScore + 5)
-      : Math.max(40, difficultyScore - 20);
+      const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const pattern = new RegExp(`(^|[^a-z0-9+#.])${escaped}($|[^a-z0-9+#.])`, 'i');
+      if (pattern.test(trimmed)) {
+        detected.add(canonical);
+        break;
+      }
+    }
   }
 
-  const comments = Number(issue.comments || 0);
+  return detected;
+}
 
-  let engagementScore = 70;
+function extractIssueRequiredSkills(issue = {}, repoName = '', labels = []) {
+  const detected = new Set();
 
-  if (comments >= 1 && comments <= 4) engagementScore = 95;
+  const addExplicit = (val) => {
+    if (!val || typeof val !== 'string') return;
+    const clean = val.trim();
+    if (!clean || /^(all|unknown|other|none|markdown)$/i.test(clean)) return;
+    const canonical = toCanonicalSkill(clean);
+    if (canonical) detected.add(canonical);
+  };
+
+  if (Array.isArray(issue.requiredSkills)) {
+    for (const s of issue.requiredSkills) addExplicit(typeof s === 'string' ? s : s?.name);
+  }
+  addExplicit(issue.language);
+  addExplicit(issue.repoLanguage);
+
+  const topics = Array.isArray(issue.repoTopics) ? issue.repoTopics : (Array.isArray(issue.topics) ? issue.topics : []);
+  for (const topic of topics) {
+    const tStr = String(topic || '').trim();
+    if (!tStr) continue;
+    const direct = toCanonicalSkill(tStr);
+    if (CANONICAL_DISPLAY_NAMES[direct]) {
+      detected.add(direct);
+    } else {
+      for (const s of extractTechnologiesFromText(tStr, { strictShortTokens: false })) detected.add(s);
+    }
+  }
+
+  const labelList = Array.isArray(labels) ? labels : (Array.isArray(issue.labels) ? issue.labels : []);
+  for (const lbl of labelList) {
+    const lblName = typeof lbl === 'string' ? lbl : (lbl && lbl.name ? lbl.name : '');
+    if (!lblName) continue;
+    const direct = toCanonicalSkill(lblName);
+    if (CANONICAL_DISPLAY_NAMES[direct]) {
+      detected.add(direct);
+    } else {
+      for (const s of extractTechnologiesFromText(lblName, { strictShortTokens: true })) detected.add(s);
+    }
+  }
+
+  // Extract from repoName (e.g. facebook/react, pandas-dev/pandas, expressjs/express)
+  if (repoName && typeof repoName === 'string') {
+    for (const s of extractTechnologiesFromText(repoName.replace(/[/_-]/g, ' '), { strictShortTokens: true })) {
+      detected.add(s);
+    }
+  }
+
+  // Extract from issue title and body
+  for (const s of extractTechnologiesFromText(issue.title || '', { strictShortTokens: true })) detected.add(s);
+  for (const s of extractTechnologiesFromText(issue.body || issue.description || '', { strictShortTokens: true })) detected.add(s);
+
+  return Array.from(detected);
+}
+
+/**
+ * Deterministic Skill-Based Issue Matching Calculator.
+ *
+ * Formula:
+ * - If user has 0 declared skills -> 0% match (no fake baseline).
+ * - If issue/repo has 0 detectable technologies/languages -> 0% match.
+ * - If matchedSkills = 0 -> 0% match.
+ * - Otherwise:
+ *     skillOverlap = round((matchedSkills.length / requiredSkills.length) * 100)
+ *     score = round(skillOverlap * 0.75 + difficultyAlignment * 0.15 + activityFit * 0.10)
+ *   where activityFit = engagementScore * 0.6 + recencyScore * 0.4.
+ */
+function calculateCompatibility(issue = {}, repoName = '', labels = [], userSkills = [], requestedDifficulty = 'all') {
+  const userCanon = normalizeCompatibilitySkills(userSkills);
+  const safeLabels = Array.isArray(labels) ? labels : (Array.isArray(issue.labels) ? issue.labels : []);
+  const labelNames = safeLabels.map(label => String((typeof label === 'string' ? label : label?.name) || '').toLowerCase());
+
+  const requiredCanon = extractIssueRequiredSkills(issue, repoName || issue.repoName || '', safeLabels);
+  const matchedCanon = requiredCanon.filter(reqSkill => userCanon.includes(reqSkill));
+  const missingCanon = requiredCanon.filter(reqSkill => !userCanon.includes(reqSkill));
+
+  const requiredDisplay = requiredCanon.map(formatSkillDisplay);
+  const matchedDisplay = matchedCanon.map(formatSkillDisplay);
+  const missingDisplay = missingCanon.map(formatSkillDisplay);
+
+  const isGoodFirstIssue = labelNames.some(name =>
+    name.includes('good first issue') || name.includes('beginner') || name.includes('first-timers-only') || name.includes('starter')
+  );
+  const isHelpWanted = labelNames.some(name => name.includes('help wanted'));
+
+  const requested = String(requestedDifficulty || 'all').toLowerCase();
+  const issueLevel = isGoodFirstIssue ? 'beginner' : (isHelpWanted ? 'intermediate' : 'advanced');
+
+  let difficultyScore = isGoodFirstIssue ? 100 : (isHelpWanted ? 85 : 65);
+  if (requested !== 'all') {
+    if (requested === issueLevel) difficultyScore = 100;
+    else if ((requested === 'beginner' && issueLevel === 'intermediate') || (requested === 'intermediate' && issueLevel === 'beginner') || (requested === 'intermediate' && issueLevel === 'advanced') || (requested === 'advanced' && issueLevel === 'intermediate')) {
+      difficultyScore = 75;
+    } else {
+      difficultyScore = 45;
+    }
+  }
+
+  const comments = Number(issue.comments ?? issue.commentsCount ?? 0);
+  let engagementScore = 75;
+  if (comments >= 1 && comments <= 4) engagementScore = 100;
   else if (comments === 0) engagementScore = 85;
-  else if (comments > 10) engagementScore = 65;
+  else if (comments > 10) engagementScore = 55;
 
-  const createdAt = new Date(issue.created_at).getTime();
-
+  const createdAt = new Date(issue.created_at || issue.createdAtExact).getTime();
   const ageDays = Number.isFinite(createdAt)
     ? Math.max(0, (Date.now() - createdAt) / 86400000)
     : 60;
+  const recencyScore = ageDays <= 14 ? 100 : ageDays <= 60 ? 80 : 55;
+  const activityScore = (engagementScore * 0.6) + (recencyScore * 0.4);
 
-  const recencyScore = ageDays <= 14 ? 98 : ageDays <= 60 ? 85 : 60;
+  if (userCanon.length === 0) {
+    return {
+      score: 0,
+      breakdown: {
+        skillOverlap: 0,
+        difficultyAlignment: difficultyScore,
+        mentorSupport: engagementScore,
+        recency: recencyScore,
+        matchedSkills: [],
+        requiredSkills: requiredDisplay,
+        missingSkills: requiredDisplay,
+        matchReason: 'Add skills to your profile to calculate personalized skill matches.'
+      }
+    };
+  }
 
-  const finalScore = Math.round(
-    skillOverlapScore * 0.45 +
-    difficultyScore * 0.30 +
-    engagementScore * 0.15 +
-    recencyScore * 0.10
-  );
+  if (requiredCanon.length === 0) {
+    return {
+      score: 0,
+      breakdown: {
+        skillOverlap: 0,
+        difficultyAlignment: difficultyScore,
+        mentorSupport: engagementScore,
+        recency: recencyScore,
+        matchedSkills: [],
+        requiredSkills: [],
+        missingSkills: [],
+        matchReason: 'No language or technology metadata detected for this repository or issue.'
+      }
+    };
+  }
+
+  if (matchedCanon.length === 0) {
+    return {
+      score: 0,
+      breakdown: {
+        skillOverlap: 0,
+        difficultyAlignment: difficultyScore,
+        mentorSupport: engagementScore,
+        recency: recencyScore,
+        matchedSkills: [],
+        requiredSkills: requiredDisplay,
+        missingSkills: missingDisplay,
+        matchReason: `0% skill overlap — requires ${missingDisplay.slice(0, 4).join(', ')} (not in your profile).`
+      }
+    };
+  }
+
+  const skillOverlapScore = Math.round((matchedCanon.length / requiredCanon.length) * 100);
+  const finalScore = Math.min(100, Math.max(1, Math.round(
+    skillOverlapScore * 0.75 +
+    difficultyScore * 0.15 +
+    activityScore * 0.10
+  )));
+
+  const matchReason = missingDisplay.length > 0
+    ? `Matched ${matchedCanon.length} of ${requiredCanon.length} required skills (${matchedDisplay.join(', ')}); missing ${missingDisplay.slice(0, 3).join(', ')}.`
+    : `Matched all ${requiredCanon.length} detected skill requirement(s) (${matchedDisplay.join(', ')}).`;
 
   return {
-    score: Math.min(99, Math.max(0, finalScore)),
+    score: finalScore,
     breakdown: {
       skillOverlap: skillOverlapScore,
       difficultyAlignment: difficultyScore,
       mentorSupport: engagementScore,
       recency: recencyScore,
-      matchedSkills
+      matchedSkills: matchedDisplay,
+      requiredSkills: requiredDisplay,
+      missingSkills: missingDisplay,
+      matchReason
     }
   };
 }
@@ -1110,29 +1498,80 @@ function calculateCompatibility(issue, repoName, labels, userSkills = [], reques
 // Repository Skill-Based Compatibility Calculator
 // ----------------------------------------------------
 
-function calculateRepositoryCompatibility(repository, userSkills = []) {
-  const skills = normalizeCompatibilitySkills(userSkills);
+function calculateRepositoryCompatibility(repository = {}, userSkills = []) {
+  const userCanon = normalizeCompatibilitySkills(userSkills);
+  const requiredSet = new Set();
 
-  const repositoryText = [
-    repository.name,
-    repository.description,
-    repository.language,
-    ...(repository.topics || [])
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
+  if (repository.language && !/^(all|unknown|other|none)$/i.test(String(repository.language).trim())) {
+    const langCanon = toCanonicalSkill(repository.language);
+    if (langCanon) requiredSet.add(langCanon);
+  }
+  if (Array.isArray(repository.topics)) {
+    for (const topic of repository.topics) {
+      const tCanon = toCanonicalSkill(topic);
+      if (CANONICAL_DISPLAY_NAMES[tCanon]) {
+        requiredSet.add(tCanon);
+      } else {
+        for (const s of extractTechnologiesFromText(String(topic || ''), { strictShortTokens: false })) requiredSet.add(s);
+      }
+    }
+  }
+  for (const s of extractTechnologiesFromText(repository.name || '', { strictShortTokens: true })) requiredSet.add(s);
+  for (const s of extractTechnologiesFromText(repository.description || '', { strictShortTokens: true })) requiredSet.add(s);
 
-  const matchedSkills = matchSkillsAgainstCorpus(skills, repositoryText);
+  const requiredCanon = Array.from(requiredSet);
+  const matchedCanon = requiredCanon.filter(reqSkill => userCanon.includes(reqSkill));
+  const missingCanon = requiredCanon.filter(reqSkill => !userCanon.includes(reqSkill));
 
-  const score = skills.length === 0
-    ? 0
-    : Math.round((matchedSkills.length / skills.length) * 100);
+  const requiredDisplay = requiredCanon.map(formatSkillDisplay);
+  const matchedDisplay = matchedCanon.map(formatSkillDisplay);
+  const missingDisplay = missingCanon.map(formatSkillDisplay);
+
+  if (userCanon.length === 0) {
+    return {
+      score: 0,
+      matchedSkills: [],
+      requiredSkills: requiredDisplay,
+      missingSkills: requiredDisplay,
+      totalSkills: 0,
+      matchReason: 'Add skills to your profile to get repository compatibility scores.'
+    };
+  }
+
+  if (requiredCanon.length === 0) {
+    return {
+      score: 0,
+      matchedSkills: [],
+      requiredSkills: [],
+      missingSkills: [],
+      totalSkills: userCanon.length,
+      matchReason: 'No language or technology metadata detected for this repository.'
+    };
+  }
+
+  if (matchedCanon.length === 0) {
+    return {
+      score: 0,
+      matchedSkills: [],
+      requiredSkills: requiredDisplay,
+      missingSkills: missingDisplay,
+      totalSkills: userCanon.length,
+      matchReason: `0% skill overlap — repository uses ${missingDisplay.slice(0, 4).join(', ')}.`
+    };
+  }
+
+  const score = Math.round((matchedCanon.length / requiredCanon.length) * 100);
+  const matchReason = missingDisplay.length > 0
+    ? `Matched ${matchedCanon.length} of ${requiredCanon.length} detected technologies (${matchedDisplay.join(', ')}); missing ${missingDisplay.slice(0, 3).join(', ')}.`
+    : `Matched all ${requiredCanon.length} detected repository technologies (${matchedDisplay.join(', ')}).`;
 
   return {
     score,
-    matchedSkills,
-    totalSkills: skills.length
+    matchedSkills: matchedDisplay,
+    requiredSkills: requiredDisplay,
+    missingSkills: missingDisplay,
+    totalSkills: userCanon.length,
+    matchReason
   };
 }
 
@@ -1193,7 +1632,8 @@ async function searchRepositories({
   order = 'desc',
   page = 1,
   perPage = 12,
-  userSkills = []
+  userSkills = [],
+  preferUserLanguages = false
 } = {}, token = null, { fetchImpl = fetch } = {}) {
   const safePage = Math.max(1, Math.min(80, parseInt(page, 10) || 1));
   const safePerPage = Math.max(1, Math.min(50, parseInt(perPage, 10) || 12));
@@ -1209,6 +1649,11 @@ async function searchRepositories({
 
   if (language && language !== 'all') {
     qParts.push(`language:${language.toLowerCase()}`);
+  } else if (preferUserLanguages && normalizedUserSkills.length > 0) {
+    const repoLangs = extractGithubSearchLanguages(userSkills);
+    if (repoLangs.length > 0) {
+      qParts.push(`language:${repoLangs[0]}`);
+    }
   }
 
   if (topic && topic !== 'all') {
@@ -1250,6 +1695,9 @@ function personalizeRepoList(rawRepos, skills) {
       ...r,
       compatibilityScore: compatibility.score,
       matchedSkills: compatibility.matchedSkills,
+      requiredSkills: compatibility.requiredSkills || [],
+      missingSkills: compatibility.missingSkills || [],
+      matchReason: compatibility.matchReason || '',
       totalSkills: compatibility.totalSkills,
       health: computeNormalizedRepoHealth(r)
     };
@@ -1615,5 +2063,8 @@ module.exports = {
   calculateContributionReadiness,
   evaluateIssueReadiness,
   calculateCompatibility,
-  calculateRepositoryCompatibility
+  calculateRepositoryCompatibility,
+  extractIssueRequiredSkills,
+  normalizeCompatibilitySkills,
+  enrichAndRankIssues
 };

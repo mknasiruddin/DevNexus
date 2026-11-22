@@ -11,6 +11,7 @@
     "test:sync": "node scripts/test_github_sync.js",
     "test:ratelimit": "node scripts/test_rate_limit_sync.js"
   },
+  "type": "commonjs",
   "author": "mknasiruddin",
   "license": "ISC",
   "dependencies": {

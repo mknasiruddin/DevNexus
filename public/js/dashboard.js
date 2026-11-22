@@ -321,7 +321,7 @@
     var dataStatusEl = $('#readiness-data-status');
     if (dataStatusEl) {
       var st = rs.dataStatus || 'insufficient';
-      dataStatusEl.style.color = st === 'insufficient' ? '#f59e0b' : (st === 'stale_cached' ? '#fbbf24' : '#4ade80');
+      dataStatusEl.style.color = st === 'insufficient' ? 'var(--warning)' : (st === 'stale_cached' ? 'var(--warning)' : 'var(--success)');
       dataStatusEl.textContent = 'Data Status: ' + (st === 'insufficient' ? 'Insufficient Data' : (st === 'stale_cached' ? 'Preserved Stale GitHub Cache' : 'Verified Profile & GitHub Data'));
     }
 
@@ -361,7 +361,7 @@
       } else if (rs.dataAvailability && !rs.dataAvailability.hasGithubData) {
         missingEl.innerHTML = '<span style="color:var(--muted);">GitHub data unavailable to detect skill gaps</span>';
       } else {
-        missingEl.innerHTML = '<span style="color:#4ade80;">No missing skill gaps detected for current scope</span>';
+        missingEl.innerHTML = '<span style="color:var(--success);">No missing skill gaps detected for current scope</span>';
       }
     }
 
@@ -410,16 +410,21 @@
     var metricPub = $('#metric-public-repos');
     if (metricPub) metricPub.textContent = String(s.publicRepos || 0);
 
+    var metricPubSub = $('#metric-public-repos-sub');
+    if (metricPubSub) {
+      metricPubSub.textContent = Number(s.totalRepos || 0) + ' total (' + Number(s.privateRepos || 0) + ' private)';
+    }
+
     var reposEl = $('#sync-stat-repos');
     if (reposEl) {
-      reposEl.innerHTML = Number(s.totalRepos || 0) + ' <span style="font-size:12px; font-weight:500; color:var(--muted);">(' + Number(s.publicRepos || 0) + ' public)</span>';
+      reposEl.innerHTML = Number(s.totalRepos || 0) + ' <span style="font-size:12px; font-weight:500; color:var(--muted);">(' + Number(s.publicRepos || 0) + ' public, ' + Number(s.privateRepos || 0) + ' private)</span>';
     }
     var commitsEl = $('#sync-stat-commits');
     if (commitsEl) commitsEl.textContent = String(s.totalCommits || 0);
 
     var prsEl = $('#sync-stat-prs');
     if (prsEl) {
-      prsEl.innerHTML = Number(s.prsCreated || 0) + ' <span style="font-size:12px; font-weight:500; color:#4ade80;">(' + Number(s.prsMerged || 0) + ' merged)</span>';
+      prsEl.innerHTML = Number(s.prsCreated || 0) + ' <span style="font-size:12px; font-weight:500; color:var(--success);">(' + Number(s.prsMerged || 0) + ' merged)</span>';
     }
 
     var issuesEl = $('#sync-stat-issues');
@@ -439,28 +444,29 @@
     }
   }
 
-  function showSyncFeedback(message, tone) {
+  function showSyncFeedback(message, tone, showAuthorizeBtn) {
     var box = $('#github-sync-feedback');
     if (!box) return;
     if (!message) {
       box.style.display = 'none';
-      box.textContent = '';
+      box.innerHTML = '';
       return;
     }
-    box.style.display = 'block';
-    box.textContent = message;
+    box.style.display = 'flex';
+    box.innerHTML = '<span>' + escapeHtml(message) + '</span>' +
+      (showAuthorizeBtn ? '<a href="/auth/github" class="btn btn-sm btn-primary" style="white-space:nowrap;">Authorize Private Repos &rarr;</a>' : '');
     if (tone === 'success') {
-      box.style.borderColor = 'rgba(34, 197, 94, 0.35)';
-      box.style.background = 'rgba(34, 197, 94, 0.12)';
-      box.style.color = '#4ade80';
+      box.style.borderColor = 'var(--success-border)';
+      box.style.background = 'var(--success-bg)';
+      box.style.color = 'var(--success)';
     } else if (tone === 'warning') {
-      box.style.borderColor = 'rgba(245, 158, 11, 0.35)';
-      box.style.background = 'rgba(245, 158, 11, 0.12)';
-      box.style.color = '#fbbf24';
+      box.style.borderColor = 'var(--warning-border)';
+      box.style.background = 'var(--warning-bg)';
+      box.style.color = 'var(--warning)';
     } else {
-      box.style.borderColor = 'rgba(248, 81, 73, 0.35)';
-      box.style.background = 'rgba(248, 81, 73, 0.12)';
-      box.style.color = '#f85149';
+      box.style.borderColor = 'var(--danger-border)';
+      box.style.background = 'var(--danger-bg)';
+      box.style.color = 'var(--danger)';
     }
   }
 
@@ -497,8 +503,15 @@
 
         if (data && data.success) {
           applySyncStateToUI(data);
+          if (window.DevNexusAnalytics && typeof window.DevNexusAnalytics.refresh === 'function') {
+            window.DevNexusAnalytics.refresh();
+          }
           var msg = data.message || 'GitHub activity synchronized.';
-          showSyncFeedback(msg, data.cooldownActive ? 'warning' : 'success');
+          if (data.syncState && data.syncState.privateAccessGranted === false && data.syncState.privateAccessNote) {
+            showSyncFeedback(data.syncState.privateAccessNote, 'warning', true);
+          } else {
+            showSyncFeedback(msg, data.cooldownActive ? 'warning' : 'success', false);
+          }
           showToast(msg);
         } else {
           if (data && data.syncState) applySyncStateToUI({ syncState: data.syncState });

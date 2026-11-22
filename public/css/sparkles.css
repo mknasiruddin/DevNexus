@@ -285,7 +285,13 @@ h1, h2, h3, h4,
 .projects-title-group h1,
 .guide-header h1,
 .leaderboard-title-group h1,
+.analytics-hero-title,
+.admin-title-group h1,
+.info-header h1,
+.auth-card h1,
+.onboarding-card h2,
 .section-title,
+.hero-name,
 .xp-title h1 {
   font-family: var(--font-display);
   letter-spacing: -0.022em;
@@ -304,14 +310,29 @@ code, kbd, pre,
 .disclosure-badge,
 .meta-pill,
 .compat-badge,
+.dn-kpi-lbl,
+.dn-horizon-tag,
+.dn-horizon-period,
+.dn-comp-head span,
 .dx-mono {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
 }
 
 .metric-val,
+.metric-value,
 .readiness-score-num,
 .stat .n,
+.stat-value,
+.podium-score,
+.dn-kpi-val,
+.dn-horizon-num,
+.dn-report-kpi .val,
+.dn-streak-kpi .val,
+.streak-hero-count,
+.streak-stat-val,
+.badges-hero-count,
+.track-xp,
 #sync-stat-commits,
 #sync-stat-contribs,
 #sync-stat-repos,

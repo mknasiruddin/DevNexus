@@ -3,9 +3,9 @@
 
 /* ======================= LAYOUT ======================= */
 .portfolio-main {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 36px 20px 72px;
+  width: min(1200px, 100% - 48px);
+  margin-inline: auto;
+  padding: 32px 0 64px;
   flex: 1;
 }
 
@@ -51,9 +51,11 @@
   gap: 32px;
   align-items: flex-start;
   background: var(--surface);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 32px;
+  border-radius: 12px;
+  padding: 28px 32px;
   box-shadow: var(--shadow);
   transition: border-color 0.2s;
 }
@@ -76,10 +78,11 @@
 
 .hero-name {
   margin: 0 0 4px;
-  font-size: 26px;
-  font-weight: 800;
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 2.8vw, 1.85rem);
+  font-weight: 700;
   color: var(--text);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
 }
 
 .hero-username {
@@ -151,29 +154,30 @@
 .btn-sync {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 16px;
+  gap: 8px;
+  padding: 8px 16px;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
+  line-height: 20px;
   border: 1px solid var(--border);
-  background: var(--surface-2);
+  background: var(--surface);
   color: var(--text);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+  transition: background 0.2s, border-color 0.2s, transform 0.2s, box-shadow 0.2s;
   font-family: inherit;
 }
 .btn-copy-link:hover,
 .btn-edit:hover,
 .btn-sync:hover {
-  background: color-mix(in srgb, var(--surface-2) 80%, var(--accent-solid));
+  background: var(--surface-2);
   border-color: var(--border-accent);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246,0.2);
+  box-shadow: 0 0 14px rgba(124, 58, 237, 0.25);
 }
 .btn-copy-link:active,
 .btn-edit:active,
-.btn-sync:active { transform: translateY(0); }
+.btn-sync:active { transform: translateY(1px); }
 
 /* ======================= IMPACT METRICS ======================= */
 .portfolio-metrics {
@@ -188,19 +192,21 @@
 
 .portfolio-metrics .metric-card {
   background: var(--surface);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 20px 18px;
   text-align: center;
   box-shadow: var(--shadow);
-  transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s;
+  transition: transform 0.22s, border-color 0.22s, box-shadow 0.22s;
   overflow: hidden;
   position: relative;
 }
 .portfolio-metrics .metric-card:hover {
   border-color: var(--border-accent);
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0,0.7), 0 0 16px rgba(59, 130, 246,0.2);
+  box-shadow: var(--shadow-hover);
 }
 
 .metric-icon {
@@ -210,8 +216,9 @@
 }
 
 .metric-value {
-  font-size: 26px;
-  font-weight: 800;
+  font-family: var(--font-display);
+  font-size: 27px;
+  font-weight: 700;
   letter-spacing: -0.03em;
   color: var(--text);
   line-height: 1.1;
@@ -220,11 +227,12 @@
 }
 
 .metric-label {
-  font-size: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
   color: var(--muted);
-  font-weight: 500;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
 }
 
 /* ======================= BADGES / ACHIEVEMENTS ======================= */
@@ -274,19 +282,21 @@
 
 .portfolio-repos .repo-card {
   background: var(--surface);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 18px;
+  border-radius: 12px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 10px;
   box-shadow: var(--shadow);
-  transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s;
+  transition: transform 0.22s, border-color 0.22s, box-shadow 0.22s;
 }
 .portfolio-repos .repo-card:hover {
-  transform: translateY(-3px);
+  transform: translateY(-2px);
   border-color: var(--border-accent);
-  box-shadow: 0 8px 24px rgba(0, 0, 0,0.7), 0 0 16px rgba(59, 130, 246,0.2);
+  box-shadow: var(--shadow-hover);
 }
 
 .repo-header {
@@ -372,8 +382,9 @@
 .track-name { font-weight: 700; font-size: 14px; color: var(--text); }
 
 .track-xp {
+  font-family: var(--font-display);
   font-size: 20px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--accent-text);
   margin-bottom: 8px;
@@ -621,8 +632,8 @@
   transform: translateX(-50%) translateY(0);
   pointer-events: auto;
 }
-.toast.success { border-color: rgba(63,185,80,0.4); color: #4ade80; background: color-mix(in srgb, var(--surface-2) 95%, rgba(63,185,80,0.3)); }
-.toast.error   { border-color: rgba(248,81,73,0.4); color: #f85149; background: color-mix(in srgb, var(--surface-2) 95%, rgba(248,81,73,0.3)); }
+.toast.success { border-color: var(--success-border); color: var(--success); background: var(--surface-elevated); }
+.toast.error   { border-color: var(--danger-border); color: var(--danger); background: var(--surface-elevated); }
 
 /* ======================= RESPONSIVE ======================= */
 @media (max-width: 1024px) {
@@ -649,8 +660,8 @@
   .skill-tracks-grid { grid-template-columns: 1fr; }
 }
 
-@media (max-width: 480px) {
-  .portfolio-main { padding: 20px 14px 60px; }
+@media (max-width: 640px) {
+  .portfolio-main { width: calc(100% - 32px); padding: 24px 0 56px; }
   .metrics-grid { grid-template-columns: 1fr; }
   .hero-name { font-size: 22px; }
   .modal-panel { padding: 20px 18px; }

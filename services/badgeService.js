@@ -9,6 +9,15 @@ const {
   getUserUnlockedBadges,
   awardUserBadge
 } = require('../db/database');
+const analyticsService = require('./analyticsService');
+
+const QUALIFYING_CONTRIBUTION_BADGES = new Set([
+  'roadmap-pioneer',
+  'roadmap-halfway',
+  'roadmap-champion',
+  'streak-starter',
+  'streak-titan'
+]);
 
 const BADGE_DEFINITIONS = [
   {
@@ -161,6 +170,19 @@ function evaluateUserBadges(userId) {
       awardUserBadge(userId, badgeDef.id);
       unlockedAt = new Date().toISOString();
       isUnlocked = true;
+      if (QUALIFYING_CONTRIBUTION_BADGES.has(badgeDef.id)) {
+        try {
+          analyticsService.recordPlatformActivity(userId, {
+            activityType: 'contribution_milestone',
+            uniqueKey: `contribution_milestone:${badgeDef.id}`,
+            referenceId: badgeDef.id,
+            title: `Earned Contribution Milestone: ${badgeDef.title}`,
+            metadata: { tier: badgeDef.tier, category: badgeDef.category }
+          });
+        } catch (e) {
+          // Non-blocking fallback
+        }
+      }
     }
 
     return {

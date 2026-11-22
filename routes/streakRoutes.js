@@ -22,7 +22,7 @@ router.get('/', async (req, res) => {
     return res.redirect('/login');
   }
   try {
-    const streak = await streakService.recordActivity(req.user.id, 'streak_page_visit');
+    const streak = streakService.getStreakSummary(req.user.id);
     if (isJsonRequest(req)) {
       return res.json({ success: true, user: { id: req.user.id, username: req.user.username, name: req.user.name || req.user.username }, streak });
     }

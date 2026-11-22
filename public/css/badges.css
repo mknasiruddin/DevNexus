@@ -9,10 +9,12 @@
 /* Hero Showcase Card */
 .badges-hero-card {
   background: var(--surface);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 32px;
-  margin-bottom: 28px;
+  border-radius: 12px;
+  padding: 28px 32px;
+  margin-bottom: 24px;
   box-shadow: var(--shadow);
   display: flex;
   align-items: center;
@@ -48,35 +50,41 @@
 }
 
 .badges-hero-count {
-  font-size: 40px;
-  font-weight: 800;
+  font-family: var(--font-display);
+  font-size: clamp(1.9rem, 3.6vw, 2.5rem);
+  font-weight: 700;
   color: var(--text);
   line-height: 1.1;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
 }
 
 .badges-hero-count span {
-  font-size: 20px;
+  font-family: var(--font);
+  font-size: 18px;
   font-weight: 500;
   color: var(--muted);
   margin-left: 6px;
 }
 
 .badges-hero-sub {
-  font-size: 14.5px;
+  font-size: 15.5px;
   color: var(--muted);
   margin-top: 6px;
-  max-width: 500px;
+  max-width: 54ch;
+  line-height: 1.55;
 }
 
 /* Overall Progress Card */
 .badges-progress-card {
   background: var(--surface);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 20px 24px;
-  margin-bottom: 28px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+  margin-bottom: 24px;
+  box-shadow: var(--shadow);
 }
 
 .badges-filter-bar {
@@ -120,20 +128,23 @@
 
 .badge-item-card {
   background: var(--surface);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 12px;
   padding: 22px;
+  box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
   gap: 12px;
   position: relative;
-  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
 }
 
 .badge-item-card:hover {
   transform: translateY(-2px);
   border-color: var(--border-accent);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-hover);
 }
 
 .badge-item-card.is-unlocked {

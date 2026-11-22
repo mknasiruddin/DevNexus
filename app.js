@@ -1,16 +1,15 @@
+const path = require("path");
+const fs = require("fs");
+
 // Ensure dotenv is loaded immediately before any other module or environment variable access
+const envPath = path.join(__dirname, ".env");
 try {
-  require("dotenv").config();
+  require("dotenv").config({ path: envPath });
 } catch (e) {
   // dotenv will fallback to manual parser below if not present
 }
 
-const express = require("express");
-const path = require("path");
-const fs = require("fs");
-
 // Fallback manual parser to ensure .env is parsed if dotenv was skipped
-const envPath = path.join(__dirname, ".env");
 if (fs.existsSync(envPath)) {
   const envContent = fs.readFileSync(envPath, "utf8");
   envContent.split("\n").forEach(line => {
@@ -24,8 +23,10 @@ if (fs.existsSync(envPath)) {
   });
 }
 
+const express = require("express");
+
 // Initialize SQLite Database Layer (ACID Persistent Storage)
-require("./db/database");
+const { findUserById: findLandingUserById } = require("./db/database");
 
 const { sessionMiddleware, securityHeadersMiddleware, loginRateLimiter, requireAuth } = require("./services/authService");
 
@@ -48,12 +49,9 @@ app.use(express.json());
 // Database-backed Session Middleware
 app.use(sessionMiddleware);
 
-const { findUserById: findLandingUserById } = require("./db/database");
 const { getUserDashboardSyncData: getLandingSyncData } = require("./services/githubSyncService");
-const {
-  calculateContributionReadiness: calcLandingReadiness,
-  getRoadmapStagesWithProgress: getLandingRoadmapProgress
-} = require("./services/saanviModulesService");
+const { getUserRepositoryStats: getLandingRepoStats } = require("./services/repoStatsService");
+const { computeUserReadinessSnapshot } = require("./services/readinessHelper");
 
 function formatStarCompact(stars) {
   const count = Number(stars) || 0;
@@ -63,7 +61,7 @@ function formatStarCompact(stars) {
   return String(count);
 }
 
-function loadLandingHeroContext(sessionUser) {
+async function loadLandingHeroContext(sessionUser) {
   if (!sessionUser || !sessionUser.id) {
     return {
       heroRepo: null,
@@ -75,20 +73,20 @@ function loadLandingHeroContext(sessionUser) {
     };
   }
   try {
-    const dbUser = findLandingUserById(sessionUser.id) || sessionUser;
-    const roadmap = getLandingRoadmapProgress(dbUser.id);
-    const roadmapCompleted = roadmap ? roadmap.completedCount : 0;
-    const readiness = calcLandingReadiness(dbUser, [], {
-      roadmapCompletedCount: roadmapCompleted,
-      roadmapVerified: true
+    const snapshot = await computeUserReadinessSnapshot(sessionUser, {
+      isSelf: true,
+      cacheOnly: true
     });
+    const dbUser = snapshot.user;
+    const roadmapCompleted = snapshot.roadmapProgress ? snapshot.roadmapProgress.completedCount : 0;
+    const readiness = snapshot.readiness;
 
     let heroRepo = null;
     let heroPr = null;
     let heroCommit = null;
     let heroSyncedRepoCount = 0;
 
-    if (dbUser.github_id) {
+    if (dbUser && dbUser.github_id) {
       const syncedData = getLandingSyncData(dbUser.id, dbUser.github_id, {
         isSelf: false,
         repoLimit: 6,
@@ -96,7 +94,7 @@ function loadLandingHeroContext(sessionUser) {
       });
       const repos = syncedData && Array.isArray(syncedData.repos) ? syncedData.repos : [];
       const activities = syncedData && Array.isArray(syncedData.activities) ? syncedData.activities : [];
-      heroSyncedRepoCount = (syncedData.syncState && Number(syncedData.syncState.publicRepos)) || repos.length;
+      heroSyncedRepoCount = getLandingRepoStats(dbUser.id, { isSelf: true }).total;
 
       if (repos.length > 0) {
         const topRepo = repos[0];
@@ -117,7 +115,8 @@ function loadLandingHeroContext(sessionUser) {
       heroRepo,
       heroPr,
       heroCommit,
-      heroReadiness: readiness && typeof readiness.score === "number" ? readiness.score : null,
+      heroReadiness: readiness && readiness.isSufficientData && typeof readiness.score === "number" ? readiness.score : null,
+      heroReadinessLevel: readiness ? readiness.readinessLevel : null,
       heroRoadmapCompleted: roadmapCompleted,
       heroSyncedRepoCount
     };
@@ -135,8 +134,8 @@ function loadLandingHeroContext(sessionUser) {
 }
 
 // --- Teammate's Existing Routes (Preserved) ---
-app.get("/", (req, res) => {
-    const heroContext = loadLandingHeroContext(req.user || null);
+app.get("/", async (req, res) => {
+    const heroContext = await loadLandingHeroContext(req.user || null);
     res.render("./landing.ejs", {
       user: req.user || null,
       ...heroContext
@@ -174,6 +173,10 @@ app.use("/api/skill-tree", require("./routes/skillTreeRoutes"));
 // --- Contribution Streak Routes (Member 3) ---
 app.use("/streak", require("./routes/streakRoutes"));
 app.use("/api/streak", require("./routes/streakRoutes"));
+
+// --- Developer Productivity & Activity Analytics Routes ---
+app.use("/analytics", require("./routes/analyticsRoutes"));
+app.use("/api/analytics", require("./routes/analyticsRoutes"));
 
 // --- Achievement Badges Routes (Member 3) ---
 app.use("/badges", require("./routes/badgeRoutes"));
