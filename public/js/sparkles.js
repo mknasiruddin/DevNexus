@@ -38,14 +38,14 @@
     // Independent Dual-Theme Palettes (Midnight Blue & Deep Purple)
     // =========================================================================
 
-    // Dark Mode Palette: Midnight Blue, Deep Purple, Glowing Violet & Electric Blue
+    // Dark Mode Palette: Midnight Blue, Deep Purple, Glowing Violet & Subtle Cyan
     var DARK_PALETTE = [
       { r: 99,  g: 102, b: 241, name: 'indigo' },       // #6366F1
       { r: 167, g: 139, b: 250, name: 'soft-violet' },  // #A78BFA
       { r: 124, g: 58,  b: 237, name: 'deep-purple' },  // #7C3AED
-      { r: 96,  g: 165, b: 250, name: 'electric-blue' },// #60A5FA
+      { r: 34,  g: 211, b: 238, name: 'subtle-cyan' },  // #22D3EE
       { r: 129, g: 140, b: 248, name: 'periwinkle' },   // #818CF8
-      { r: 255, g: 255, b: 255, name: 'pure-white' }    // Crisp white
+      { r: 226, g: 232, b: 240, name: 'crisp-slate' }   // Soft Crisp Slate
     ];
 
     // Light Mode Palette: Pale Purple, Soft Indigo, Powder Blue & Lavender
@@ -74,8 +74,8 @@
     var isRunning = true;
     var animFrame = null;
 
-    // Responsive particle count: ~36 to 48 particles for an elegant, non-cluttered atmosphere
-    var count = Math.min(48, Math.max(28, Math.floor((width * height) / 28000)));
+    // Responsive particle count: ~28 to 40 particles for a calm, refined developer atmosphere
+    var count = Math.min(40, Math.max(24, Math.floor((width * height) / 34000)));
 
     function createParticle(initial) {
       var palette = getPalette();

@@ -135,7 +135,7 @@
 .github-link  { background: rgba(36, 36, 36, 0.85); color: #f0f6fc; border-color: rgba(240,246,252,0.2); }
 .linkedin-link{ background: rgba(10, 102, 194, 0.18); color: #58a6ff; border-color: rgba(10,102,194,0.4); }
 .twitter-link { background: rgba(29, 155, 240, 0.15); color: #1d9bf0; border-color: rgba(29,155,240,0.4); }
-.website-link { background: rgba(99, 102, 241, 0.15); color: var(--accent-text); border-color: var(--border-accent); }
+.website-link { background: rgba(59, 130, 246, 0.15); color: var(--accent-text); border-color: var(--border-accent); }
 
 [data-theme="light"] .github-link { background: rgba(36,36,36,0.08); color: #24292f; }
 
@@ -169,7 +169,7 @@
   background: color-mix(in srgb, var(--surface-2) 80%, var(--accent-solid));
   border-color: var(--border-accent);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(124,58,237,0.2);
+  box-shadow: 0 4px 12px rgba(59, 130, 246,0.2);
 }
 .btn-copy-link:active,
 .btn-edit:active,
@@ -200,7 +200,7 @@
 .portfolio-metrics .metric-card:hover {
   border-color: var(--border-accent);
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(8,11,26,0.7), 0 0 16px rgba(124,58,237,0.2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0,0.7), 0 0 16px rgba(59, 130, 246,0.2);
 }
 
 .metric-icon {
@@ -286,7 +286,7 @@
 .portfolio-repos .repo-card:hover {
   transform: translateY(-3px);
   border-color: var(--border-accent);
-  box-shadow: 0 8px 24px rgba(8,11,26,0.7), 0 0 16px rgba(124,58,237,0.2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0,0.7), 0 0 16px rgba(59, 130, 246,0.2);
 }
 
 .repo-header {
@@ -473,7 +473,7 @@
   padding: 28px 32px;
   width: 100%;
   max-width: 520px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 32px rgba(124,58,237,0.2);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 32px rgba(59, 130, 246,0.2);
   max-height: 90vh;
   overflow-y: auto;
 }

@@ -48,10 +48,98 @@ app.use(express.json());
 // Database-backed Session Middleware
 app.use(sessionMiddleware);
 
+const { findUserById: findLandingUserById } = require("./db/database");
+const { getUserDashboardSyncData: getLandingSyncData } = require("./services/githubSyncService");
+const {
+  calculateContributionReadiness: calcLandingReadiness,
+  getRoadmapStagesWithProgress: getLandingRoadmapProgress
+} = require("./services/saanviModulesService");
+
+function formatStarCompact(stars) {
+  const count = Number(stars) || 0;
+  if (count >= 1000) {
+    return (count >= 10000 ? Math.round(count / 1000) : (count / 1000).toFixed(1).replace(/\.0$/, "")) + "k";
+  }
+  return String(count);
+}
+
+function loadLandingHeroContext(sessionUser) {
+  if (!sessionUser || !sessionUser.id) {
+    return {
+      heroRepo: null,
+      heroPr: null,
+      heroCommit: null,
+      heroReadiness: null,
+      heroRoadmapCompleted: 0,
+      heroSyncedRepoCount: 0
+    };
+  }
+  try {
+    const dbUser = findLandingUserById(sessionUser.id) || sessionUser;
+    const roadmap = getLandingRoadmapProgress(dbUser.id);
+    const roadmapCompleted = roadmap ? roadmap.completedCount : 0;
+    const readiness = calcLandingReadiness(dbUser, [], {
+      roadmapCompletedCount: roadmapCompleted,
+      roadmapVerified: true
+    });
+
+    let heroRepo = null;
+    let heroPr = null;
+    let heroCommit = null;
+    let heroSyncedRepoCount = 0;
+
+    if (dbUser.github_id) {
+      const syncedData = getLandingSyncData(dbUser.id, dbUser.github_id, {
+        isSelf: false,
+        repoLimit: 6,
+        activityLimit: 15
+      });
+      const repos = syncedData && Array.isArray(syncedData.repos) ? syncedData.repos : [];
+      const activities = syncedData && Array.isArray(syncedData.activities) ? syncedData.activities : [];
+      heroSyncedRepoCount = (syncedData.syncState && Number(syncedData.syncState.publicRepos)) || repos.length;
+
+      if (repos.length > 0) {
+        const topRepo = repos[0];
+        heroRepo = {
+          fullName: topRepo.fullName,
+          name: topRepo.name,
+          starsLabel: formatStarCompact(topRepo.stars),
+          healthScore: topRepo.health && typeof topRepo.health.score === "number" ? topRepo.health.score : null,
+          language: topRepo.language || null
+        };
+      }
+
+      heroPr = activities.find(a => a && a.category === "pr") || null;
+      heroCommit = activities.find(a => a && a.category === "commit") || null;
+    }
+
+    return {
+      heroRepo,
+      heroPr,
+      heroCommit,
+      heroReadiness: readiness && typeof readiness.score === "number" ? readiness.score : null,
+      heroRoadmapCompleted: roadmapCompleted,
+      heroSyncedRepoCount
+    };
+  } catch (err) {
+    console.warn("[DevNexus] Landing hero data fallback:", err.message);
+    return {
+      heroRepo: null,
+      heroPr: null,
+      heroCommit: null,
+      heroReadiness: null,
+      heroRoadmapCompleted: 0,
+      heroSyncedRepoCount: 0
+    };
+  }
+}
+
 // --- Teammate's Existing Routes (Preserved) ---
 app.get("/", (req, res) => {
+    const heroContext = loadLandingHeroContext(req.user || null);
     res.render("./landing.ejs", {
-      user: req.user || null
+      user: req.user || null,
+      ...heroContext
     });
 });
 
@@ -133,8 +221,10 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 
 if (require.main === module) {
+  const { startGithubSyncScheduler } = require("./services/githubSyncService");
   app.listen(PORT, () => {
     console.log(`listening to port ${PORT}`);
+    startGithubSyncScheduler();
   });
 }
 

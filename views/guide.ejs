@@ -17,9 +17,9 @@
     }
     .guide-header h1 {
       margin: 0 0 10px;
-      font-size: clamp(24px, 4vw, 34px);
-      font-weight: 800;
-      letter-spacing: -0.02em;
+      font-size: clamp(24px, 3.6vw, 32px);
+      font-weight: 700;
+      letter-spacing: -0.028em;
       color: var(--text);
     }
     .guide-header p {
@@ -147,7 +147,8 @@
     .guide-section h2 {
       margin: 0 0 14px;
       font-size: 22px;
-      font-weight: 800;
+      font-weight: 700;
+      letter-spacing: -0.02em;
       color: var(--text);
       display: flex;
       align-items: center;
@@ -195,6 +196,8 @@
     /* First Contribution Roadmap (14 Stages) Styles */
     .roadmap-hero-card {
       background: var(--surface);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
       border: 1px solid var(--border);
       border-radius: 12px;
       padding: 24px 28px;
@@ -808,6 +811,19 @@
               var labelEl = btn.querySelector('.toggle-label');
               if (labelEl) labelEl.textContent = nextCompleted ? 'Completed' : 'Mark Completed';
 
+              var svgEl = btn.querySelector('svg');
+              if (svgEl) {
+                svgEl.innerHTML = nextCompleted
+                  ? '<path d="M20 6L9 17l-5-5"/>'
+                  : '<circle cx="12" cy="12" r="9"/>';
+              }
+
+              var tsEl = card.querySelector('.stage-timestamp');
+              if (tsEl) {
+                tsEl.textContent = nextCompleted ? 'Saved in SQLite' : ('Stage ' + stepNumber + ' / 14');
+                tsEl.style.color = nextCompleted ? '#4ade80' : 'var(--muted)';
+              }
+
               var countEl = document.getElementById('roadmap-completed-count');
               var pctEl = document.getElementById('roadmap-percentage-text');
               var fillEl = document.getElementById('roadmap-progress-fill');
@@ -872,10 +888,13 @@
               resetBtn.disabled = false;
               if (data && data.success) {
                 window.location.reload();
+              } else {
+                showToast((data && data.error) || 'Could not reset roadmap progress.');
               }
             })
             .catch(function () {
               resetBtn.disabled = false;
+              showToast('Network error while resetting roadmap progress.');
             });
         });
       }

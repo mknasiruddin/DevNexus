@@ -26,13 +26,19 @@ const {
   findUserByEmail,
   hashPassword,
   verifyPassword,
+  validateRegistrationInput,
   upsertGithubUser,
   findOrCreateDemoUser,
   registerLocalUser,
   authenticateLocalUser,
+  authenticateLocalUserWithStatus,
   updateUserProfile,
-  logActivity
+  logActivity,
+  saveUserGithubToken,
+  findUserByGithubId
 } = require('../db/database');
+
+const { synchronizeUserGitHubActivity } = require('../services/githubSyncService');
 
 const {
   requireAuth,
@@ -41,18 +47,57 @@ const {
   clearLoginAttempts
 } = require('../services/authService');
 
-const SKILL_PALETTE = {
-  'JavaScript': '#f1e05a',
-  'TypeScript': '#3178c6',
-  'Python': '#3572A5',
-  'Node.js': '#339933',
-  'Go': '#00ADD8',
-  'Rust': '#dea584',
-  'React': '#61dafb',
-  'Java': '#b07219',
-  'C++': '#f34b7d',
-  'Docs': '#8b949e'
-};
+const { TECH_CATEGORIES, getSkillColor } = require('../services/techCatalog');
+
+function parseSubmittedSkills(rawSkills, rawCustomSkills) {
+  const combined = [];
+  const pushList = (val) => {
+    if (!val) return;
+    if (typeof val === 'string') {
+      val.split(',').forEach(s => combined.push(s));
+    } else if (Array.isArray(val)) {
+      val.forEach(item => {
+        if (typeof item === 'string') {
+          item.split(',').forEach(s => combined.push(s));
+        } else if (item != null) {
+          combined.push(String(item));
+        }
+      });
+    }
+  };
+  pushList(rawSkills);
+  pushList(rawCustomSkills);
+
+  const seen = new Set();
+  const clean = [];
+  for (const raw of combined) {
+    const trimmed = String(raw || '').trim().slice(0, 50);
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (key === 'other') continue;
+    if (!seen.has(key)) {
+      seen.add(key);
+      clean.push(trimmed);
+    }
+    if (clean.length >= 60) break;
+  }
+  return clean;
+}
+
+function formatSkillsWithColors(skillNames) {
+  return skillNames.map(skillName => ({
+    name: skillName,
+    color: getSkillColor(skillName)
+  }));
+}
+
+function wantsJson(req) {
+  return Boolean(
+    req.xhr ||
+    (req.headers && req.headers.accept && req.headers.accept.includes('application/json')) ||
+    (typeof req.is === 'function' && req.is('application/json'))
+  );
+}
 
 // Login Handler
 function handleGetLogin(req, res) {
@@ -65,8 +110,10 @@ function handleGetLogin(req, res) {
     activePage: 'login',
     mode: 'login',
     isOAuthConfigured: isOAuthConfigured(),
+    oauthOnly: req.query.oauthOnly === '1',
     error: req.query.error || null,
-    success: req.query.success || null
+    success: req.query.success || null,
+    formValues: { username: req.query.username || '', email: '' }
   });
 }
 
@@ -82,73 +129,199 @@ function handleGetSignup(req, res) {
     mode: 'signup',
     isOAuthConfigured: isOAuthConfigured(),
     error: req.query.error || null,
-    success: req.query.success || null
+    success: req.query.success || null,
+    formValues: {
+      username: req.query.username || '',
+      email: req.query.email || ''
+    }
   });
 }
 
 // POST /login (Local credential authentication)
 function handlePostLogin(req, res) {
-  const username = (req.body.username || '').trim();
-  const password = req.body.password || '';
+  const body = req.body || {};
+  const rawIdentifier = body.username || body.email || body.identifier || '';
+  const username = typeof rawIdentifier === 'string' ? rawIdentifier.trim() : '';
+  const password = typeof body.password === 'string' ? body.password : '';
+  const isJson = wantsJson(req);
 
   if (!username || !password) {
-    return res.redirect('/login?error=Please+enter+both+username+and+password');
+    const msg = 'Please enter both username and password';
+    if (isJson) {
+      return res.status(400).json({ success: false, error: 'MISSING_CREDENTIALS', message: msg });
+    }
+    const params = new URLSearchParams({ error: msg });
+    if (username) params.set('username', username);
+    return res.redirect(`/login?${params.toString()}`);
   }
 
-  const user = authenticateLocalUser(username, password);
-  if (!user) {
-    recordFailedLoginAttempt(req);
-    logActivity(null, 'USER_LOGIN_FAIL', username, 'Failed user login: invalid credentials');
-    return res.redirect('/login?error=Invalid+username+or+password');
+  try {
+    const authResult = authenticateLocalUserWithStatus(username, password);
+    if (!authResult.ok) {
+      if (authResult.reason === 'OAUTH_ONLY') {
+        logActivity(authResult.user ? authResult.user.id : null, 'USER_LOGIN_OAUTH_NOTICE', username, 'Guided GitHub OAuth account to Continue with GitHub');
+        const oauthMsg = 'This account signs in with GitHub. Use Continue with GitHub to access your account — no separate DevNexus password is needed.';
+        if (isJson) {
+          return res.status(400).json({ success: false, error: 'OAUTH_ONLY', oauthUrl: '/auth/github', message: oauthMsg });
+        }
+        const params = new URLSearchParams({ oauthOnly: '1', username });
+        return res.redirect(`/login?${params.toString()}`);
+      }
+
+      recordFailedLoginAttempt(req);
+      let errorMsg = 'Invalid username or password';
+      let logDetails = 'Failed user login: invalid credentials';
+
+      if (authResult.reason === 'NO_PASSWORD') {
+        errorMsg = 'This sandbox account does not have a password set. Sign up or use Demo Login / GitHub OAuth.';
+        logDetails = 'Failed user login: passwordless account attempted password login';
+      } else if (authResult.reason === 'ACCOUNT_SUSPENDED') {
+        errorMsg = 'This account has been suspended. Please contact an administrator.';
+        logDetails = 'Failed user login: account suspended';
+      }
+
+      logActivity(authResult.user ? authResult.user.id : null, 'USER_LOGIN_FAIL', username, logDetails);
+
+      if (isJson) {
+        return res.status(401).json({ success: false, error: authResult.reason || 'INVALID_CREDENTIALS', message: errorMsg });
+      }
+      const params = new URLSearchParams({ error: errorMsg });
+      params.set('username', username);
+      return res.redirect(`/login?${params.toString()}`);
+    }
+
+    const user = authResult.user;
+    clearLoginAttempts(req);
+    if (req.session && typeof req.session.regenerate === 'function') {
+      req.session.regenerate();
+    }
+    req.session.userId = user.id;
+    if (req.session && typeof req.session.save === 'function') {
+      req.session.save();
+    }
+
+    logActivity(user.id, 'USER_LOGIN', user.username, 'Authenticated via local credentials');
+
+    const redirectUrl = user.is_onboarded ? '/dashboard' : '/onboarding';
+    if (isJson) {
+      return res.json({
+        success: true,
+        redirectUrl,
+        user: {
+          id: user.id,
+          username: user.username,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          is_onboarded: Boolean(user.is_onboarded)
+        }
+      });
+    }
+    res.redirect(redirectUrl);
+  } catch (err) {
+    console.error('[DevNexus Login Database Error]', err.message);
+    const dbMsg = 'Sign-in is temporarily unavailable due to a database error. Please try again later.';
+    if (isJson) {
+      return res.status(503).json({ success: false, error: 'DATABASE_ERROR', message: dbMsg });
+    }
+    return res.status(503).render('login', {
+      siteName: 'DevNexus',
+      activePage: 'login',
+      mode: 'login',
+      isOAuthConfigured: isOAuthConfigured(),
+      error: dbMsg,
+      success: null,
+      formValues: { username, email: '' }
+    });
   }
-
-  clearLoginAttempts(req);
-  if (req.session.regenerate) req.session.regenerate();
-  req.session.userId = user.id;
-  req.session.save();
-
-  logActivity(user.id, 'USER_LOGIN', user.username, 'Authenticated via local credentials');
-
-  if (!user.is_onboarded) {
-    return res.redirect('/onboarding');
-  }
-  res.redirect('/dashboard');
 }
 
 // POST /signup (Local developer registration)
 function handlePostSignup(req, res) {
-  const username = (req.body.username || '').trim();
-  const email = (req.body.email || '').trim();
-  const password = req.body.password || '';
-  const confirmPassword = req.body.confirmPassword || req.body.confirm_password || '';
-
-  if (!username || !password) {
-    return res.redirect('/signup?error=Username+and+password+are+required');
-  }
-
-  if (email && !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email)) {
-    return res.redirect('/signup?error=Please+enter+a+valid+email+address');
-  }
-
-  if (password !== confirmPassword) {
-    return res.redirect('/signup?error=Passwords+do+not+match');
-  }
-
-  if (password.length < 6) {
-    return res.redirect('/signup?error=Password+must+be+at+least+6+characters');
-  }
+  const body = req.body || {};
+  const username = typeof body.username === 'string' ? body.username.trim() : '';
+  const email = typeof body.email === 'string' ? body.email.trim() : '';
+  const password = typeof body.password === 'string' ? body.password : '';
+  const confirmPassword = typeof body.confirmPassword === 'string'
+    ? body.confirmPassword
+    : (typeof body.confirm_password === 'string' ? body.confirm_password : '');
+  const name = typeof body.name === 'string' ? body.name.trim() : null;
+  const isJson = wantsJson(req);
 
   try {
-    const newUser = registerLocalUser({ username, email, password });
+    validateRegistrationInput({
+      username,
+      email,
+      password,
+      confirmPassword,
+      requireConfirm: true
+    });
 
-    if (req.session.regenerate) req.session.regenerate();
+    const newUser = registerLocalUser({ username, email, password, name });
+
+    if (req.session && typeof req.session.regenerate === 'function') {
+      req.session.regenerate();
+    }
     req.session.userId = newUser.id;
-    req.session.save();
+    if (req.session && typeof req.session.save === 'function') {
+      req.session.save();
+    }
 
     logActivity(newUser.id, 'USER_SIGNUP', newUser.username, 'New developer registered via local signup');
-    res.redirect('/onboarding');
+
+    if (isJson) {
+      return res.status(201).json({
+        success: true,
+        message: 'Account created successfully! Redirecting to developer onboarding...',
+        redirectUrl: '/onboarding',
+        user: {
+          id: newUser.id,
+          username: newUser.username,
+          name: newUser.name,
+          email: newUser.email,
+          role: newUser.role,
+          is_onboarded: Boolean(newUser.is_onboarded)
+        }
+      });
+    }
+
+    return res.redirect('/onboarding');
   } catch (err) {
-    return res.redirect('/signup?error=' + encodeURIComponent(err.message));
+    if (err && err.isValidationError) {
+      const status = err.statusCode || 400;
+      if (isJson) {
+        return res.status(status).json({
+          success: false,
+          error: err.code || 'VALIDATION_ERROR',
+          message: err.message,
+          fieldErrors: err.fieldErrors || (err.field ? { [err.field]: err.message } : {})
+        });
+      }
+      const params = new URLSearchParams({ error: err.message });
+      if (username) params.set('username', username);
+      if (email) params.set('email', email);
+      return res.redirect(`/signup?${params.toString()}`);
+    }
+
+    console.error('[DevNexus Signup Database Error]', err);
+    const dbErrorMessage = 'Unable to create your account due to a database error. Please try again later.';
+    if (isJson) {
+      return res.status(503).json({
+        success: false,
+        error: 'DATABASE_ERROR',
+        message: dbErrorMessage
+      });
+    }
+
+    return res.status(503).render('login', {
+      siteName: 'DevNexus',
+      activePage: 'signup',
+      mode: 'signup',
+      isOAuthConfigured: isOAuthConfigured(),
+      error: dbErrorMessage,
+      success: null,
+      formValues: { username, email }
+    });
   }
 }
 
@@ -160,6 +333,9 @@ function handleForgotPassword(req, res) {
   }
 
   const matchedUser = findUserByUsername(identifier) || (identifier.includes('@') ? findUserByEmail(identifier) : null);
+  if (matchedUser && matchedUser.github_id && !matchedUser.password_hash) {
+    return res.redirect(`/login?oauthOnly=1&username=${encodeURIComponent(identifier)}`);
+  }
   logActivity(
     matchedUser ? matchedUser.id : null,
     'PASSWORD_ASSISTANCE_REQ',
@@ -184,9 +360,24 @@ router.get('/github', (req, res) => {
     return res.redirect('/login?error=GitHub+OAuth+authentication+is+temporarily+unavailable.+Please+contact+the+administrator.');
   }
 
+  // Ensure session cookie is issued on the exact host/port configured in GITHUB_CALLBACK_URL (e.g. localhost vs 127.0.0.1)
+  try {
+    const callbackUrl = new URL(getCallbackUrl(req));
+    const reqHost = req.headers && req.headers.host ? req.headers.host : '';
+    const reqPort = reqHost.includes(':') ? reqHost.split(':')[1] : '';
+    const cbPort = callbackUrl.port || (callbackUrl.protocol === 'https:' ? '443' : '80');
+    if (reqHost && reqPort === cbPort && reqHost !== callbackUrl.host) {
+      return res.redirect(`${callbackUrl.origin}/auth/github`);
+    }
+  } catch (e) {
+    // Proceed with default authorize flow if URL parsing fails
+  }
+
   const state = crypto.randomBytes(16).toString('hex');
   req.session.oauthState = state;
-  req.session.save();
+  if (typeof req.session.save === 'function') {
+    req.session.save();
+  }
 
   const authUrl = getOAuthAuthorizeUrl(state, req);
   res.redirect(authUrl);
@@ -267,15 +458,19 @@ router.get('/github/callback', async (req, res) => {
     });
   }
 
-  if (!req.session.oauthState || req.session.oauthState !== state) {
+  if (!req.session || !req.session.oauthState || !state || req.session.oauthState !== state) {
+    if (req.session && req.session.oauthState) {
+      req.session.oauthState = null;
+      try { if (typeof req.session.save === 'function') req.session.save(); } catch (e) {}
+    }
     return res.status(403).render('error', {
       siteName: 'DevNexus',
       activePage: 'login',
       statusCode: 403,
       title: 'State Mismatch (CSRF Protected)',
-      message: 'State verification token did not match. Please restart the sign-in process from DevNexus.',
-      actionUrl: '/login',
-      actionText: 'Retry Sign In'
+      message: 'State verification token did not match or your session expired. Please restart the sign-in process from DevNexus.',
+      actionUrl: '/auth/github',
+      actionText: 'Retry GitHub Sign In'
     });
   }
 
@@ -287,11 +482,23 @@ router.get('/github/callback', async (req, res) => {
     // 2. Fetch authenticated GitHub user profile
     const { user: githubProfile } = await getAuthenticatedUser(accessToken);
 
+    // 2b. If an already logged-in local user initiated OAuth Connect GitHub, bind github_id to their account if unclaimed
+    if (req.user && req.user.id && !req.user.github_id && !findUserByGithubId(githubProfile.id)) {
+      db.prepare('UPDATE users SET github_id = ?, avatar_url = COALESCE(?, avatar_url), updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .run(String(githubProfile.id), githubProfile.avatar_url || null, req.user.id);
+    }
+
     // 3. Create or update user in SQLite ACID database
     const { user: localUser, isNew } = upsertGithubUser(githubProfile);
 
-    // 4. Create or update user in MongoDB if configured
+    if (!localUser || localUser.status !== 'active') {
+      logActivity(localUser ? localUser.id : null, 'USER_LOGIN_FAIL', githubProfile.login, 'GitHub OAuth login blocked: account suspended');
+      return res.redirect('/login?error=' + encodeURIComponent('This account has been suspended. Please contact an administrator.'));
+    }
+
+    // 4. Create or update user in MongoDB if configured & save encrypted token for scheduled sync
     await upsertMongoUser(githubProfile, localUser);
+    saveUserGithubToken(localUser.id, githubProfile.id, githubProfile.login, accessToken);
 
     // 5. Establish secure regenerated session
     if (req.session.regenerate) req.session.regenerate();
@@ -302,6 +509,14 @@ router.get('/github/callback', async (req, res) => {
     req.session.save();
 
     logActivity(localUser.id, isNew ? 'USER_SIGNUP' : 'USER_LOGIN', localUser.username, 'Authenticated via GitHub OAuth');
+
+    // Trigger initial GitHub activity sync cleanly in background without blocking OAuth redirect
+    synchronizeUserGitHubActivity(localUser.id, {
+      sessionToken: accessToken,
+      force: true
+    }).catch(err => {
+      console.warn('[DevNexus OAuth Initial Sync] Skipped:', err.message);
+    });
 
     // 6. Redirect new users to onboarding, existing users to dashboard
     if (isNew || !localUser.is_onboarded) {
@@ -315,7 +530,7 @@ router.get('/github/callback', async (req, res) => {
       activePage: 'login',
       statusCode: 500,
       title: 'OAuth Authentication Failed',
-      message: err.message,
+      message: 'Unable to complete GitHub authentication. Please try signing in again.',
       actionUrl: '/login',
       actionText: 'Return to Sign In'
     });
@@ -325,7 +540,7 @@ router.get('/github/callback', async (req, res) => {
 // Onboarding Handlers (Shared with top-level /onboarding)
 function handleGetOnboarding(req, res) {
   if (!req.user) {
-    return res.redirect('/auth/login?error=Please+sign+in+to+continue');
+    return res.redirect('/login?error=Please+sign+in+to+continue');
   }
 
   // Allow editing profile preferences when ?edit=1 is passed
@@ -336,7 +551,7 @@ function handleGetOnboarding(req, res) {
   let existingSkills = [];
   try {
     const parsed = JSON.parse(req.user.skills || '[]');
-    existingSkills = parsed.map(s => (typeof s === 'string' ? s : s.name));
+    existingSkills = parsed.map(s => (typeof s === 'string' ? s : s.name)).filter(Boolean);
   } catch (e) {
     existingSkills = [];
   }
@@ -344,6 +559,7 @@ function handleGetOnboarding(req, res) {
   res.render('onboarding', {
     user: req.user,
     existingSkills,
+    techCategories: TECH_CATEGORIES,
     isEditing: req.query.edit === '1',
     error: req.query.error || null,
     siteName: 'DevNexus',
@@ -353,76 +569,104 @@ function handleGetOnboarding(req, res) {
 
 function handlePostOnboarding(req, res) {
   if (!req.user) {
-    return res.redirect('/auth/login?error=Please+sign+in+to+continue');
+    if (wantsJson(req)) {
+      return res.status(401).json({ success: false, error: 'AUTHENTICATION_REQUIRED', message: 'Please sign in to continue.' });
+    }
+    return res.redirect('/login?error=Please+sign+in+to+continue');
   }
 
+  const body = req.body || {};
   const validLevels = ['Beginner', 'Intermediate', 'Advanced'];
-  const experienceLevel = validLevels.includes(req.body.experience_level) ? req.body.experience_level : 'Intermediate';
-  const bio = typeof req.body.bio === 'string' ? req.body.bio.trim().slice(0, 300) : undefined;
-  const name = typeof req.body.name === 'string' && req.body.name.trim() !== '' ? req.body.name.trim().slice(0, 80) : undefined;
+  const experienceLevel = validLevels.includes(body.experience_level)
+    ? body.experience_level
+    : (validLevels.includes(req.user.experience_level) ? req.user.experience_level : null);
+  const bio = typeof body.bio === 'string' ? body.bio.trim().slice(0, 300) : undefined;
+  const name = typeof body.name === 'string' && body.name.trim() !== '' ? body.name.trim().slice(0, 80) : undefined;
 
-  let rawSkills = req.body.skills || [];
-  if (typeof rawSkills === 'string') {
-    rawSkills = [rawSkills];
-  }
-  rawSkills = rawSkills.map(s => String(s).trim()).filter(Boolean);
+  const rawSkills = parseSubmittedSkills(body.skills, body.custom_skills);
   if (rawSkills.length === 0) {
-    rawSkills = ['JavaScript'];
+    if (wantsJson(req)) {
+      return res.status(400).json({ success: false, error: 'SKILLS_REQUIRED', message: 'Please select at least one technology or language.' });
+    }
+    return res.status(400).render('onboarding', {
+      user: { ...req.user, name: name || req.user.name, bio: bio !== undefined ? bio : req.user.bio, experience_level: experienceLevel },
+      existingSkills: [],
+      techCategories: TECH_CATEGORIES,
+      isEditing: false,
+      error: 'Please select at least one technology or language.',
+      siteName: 'DevNexus',
+      activePage: 'onboarding'
+    });
   }
 
-  const formattedSkills = rawSkills.map(skillName => ({
-    name: skillName,
-    color: SKILL_PALETTE[skillName] || '#818cf8'
-  }));
+  const formattedSkills = formatSkillsWithColors(rawSkills);
 
-  updateUserProfile(req.user.id, {
-    name,
-    bio,
-    skills: formattedSkills,
-    experience_level: experienceLevel,
-    is_onboarded: 1
-  });
+  try {
+    updateUserProfile(req.user.id, {
+      name,
+      bio,
+      skills: formattedSkills,
+      experience_level: experienceLevel,
+      is_onboarded: 1
+    });
 
-  logActivity(req.user.id, 'ONBOARDING_COMPLETE', req.user.username, `Updated developer profile with ${rawSkills.length} skills (${experienceLevel})`);
-  res.redirect('/dashboard');
+    logActivity(req.user.id, 'ONBOARDING_COMPLETE', req.user.username, `Updated developer profile with ${rawSkills.length} skills (${experienceLevel})`);
+    res.redirect('/dashboard');
+  } catch (err) {
+    console.error('[DevNexus Onboarding Database Error]', err.message);
+    return res.status(503).render('onboarding', {
+      user: req.user,
+      existingSkills: rawSkills,
+      techCategories: TECH_CATEGORIES,
+      isEditing: false,
+      error: 'Unable to save your onboarding preferences due to a database error. Please try again.',
+      siteName: 'DevNexus',
+      activePage: 'onboarding'
+    });
+  }
 }
 
 // Profile Update Handler (POST /profile or POST /dashboard/profile)
 function handlePostProfile(req, res) {
   if (!req.user) {
-    if (req.xhr || (req.headers.accept && req.headers.accept.includes('application/json'))) {
+    if (wantsJson(req)) {
       return res.status(401).json({ success: false, error: 'Authentication required.' });
     }
     return res.redirect('/login');
   }
 
+  const body = req.body || {};
+
   // Ownership check: if body specifies a userId, it must match req.user.id
-  if (req.body.userId && Number(req.body.userId) !== req.user.id) {
+  if (body.userId && Number(body.userId) !== req.user.id) {
     return res.status(403).json({ success: false, error: 'Forbidden: You can only edit your own profile.' });
   }
 
   const validLevels = ['Beginner', 'Intermediate', 'Advanced'];
-  const experienceLevel = validLevels.includes(req.body.experience_level) ? req.body.experience_level : (req.user.experience_level || 'Intermediate');
-  const bio = typeof req.body.bio === 'string' ? req.body.bio.trim().slice(0, 300) : req.user.bio;
-  const name = typeof req.body.name === 'string' && req.body.name.trim() !== '' ? req.body.name.trim().slice(0, 80) : req.user.name;
+  const experienceLevel = validLevels.includes(body.experience_level)
+    ? body.experience_level
+    : (validLevels.includes(req.user.experience_level) ? req.user.experience_level : null);
+  const bio = typeof body.bio === 'string' ? body.bio.trim().slice(0, 300) : req.user.bio;
+  const name = typeof body.name === 'string' && body.name.trim() !== '' ? body.name.trim().slice(0, 80) : req.user.name;
 
-  let rawSkills = req.body.skills;
   let formattedSkills = null;
-  if (rawSkills !== undefined) {
-    if (typeof rawSkills === 'string') {
-      rawSkills = rawSkills.split(',').map(s => s.trim()).filter(Boolean);
-    } else if (Array.isArray(rawSkills)) {
-      rawSkills = rawSkills.map(s => String(s).trim()).filter(Boolean);
-    } else {
-      rawSkills = [];
-    }
+  if (body.skills !== undefined || body.custom_skills !== undefined || !wantsJson(req)) {
+    const rawSkills = parseSubmittedSkills(body.skills, body.custom_skills);
     if (rawSkills.length === 0) {
-      rawSkills = ['JavaScript'];
+      if (wantsJson(req)) {
+        return res.status(400).json({ success: false, error: 'Please select at least one technology or language.' });
+      }
+      return res.status(400).render('onboarding', {
+        user: { ...req.user, name, bio, experience_level: experienceLevel },
+        existingSkills: [],
+        techCategories: TECH_CATEGORIES,
+        isEditing: true,
+        error: 'Please select at least one technology or language.',
+        siteName: 'DevNexus',
+        activePage: 'onboarding'
+      });
     }
-    formattedSkills = rawSkills.map(skillName => ({
-      name: skillName,
-      color: SKILL_PALETTE[skillName] || '#818cf8'
-    }));
+    formattedSkills = formatSkillsWithColors(rawSkills);
   }
 
   const updated = updateUserProfile(req.user.id, {
@@ -435,7 +679,7 @@ function handlePostProfile(req, res) {
 
   logActivity(req.user.id, 'PROFILE_UPDATE', req.user.username, 'Updated developer profile and skill preferences');
 
-  if (req.xhr || (req.headers.accept && req.headers.accept.includes('application/json'))) {
+  if (wantsJson(req)) {
     return res.json({ success: true, user: { id: updated.id, username: updated.username, name: updated.name, bio: updated.bio, experience_level: updated.experience_level, skills: JSON.parse(updated.skills || '[]') } });
   }
 

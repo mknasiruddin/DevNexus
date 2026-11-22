@@ -1,13 +1,21 @@
 /* ==========================================================================
-   DevNexus - Midnight Blue & Deep Purple Background & Aurora System
-   Sophisticated combination of:
-     - Midnight navy: #080B1A
-     - Deep blue: #10152B
-     - Dark indigo: #17143A
-     - Deep purple: #241548
-   Light Mode: White with subtle lavender and powder-blue gradients.
-   Strictly non-intrusive: sits behind all page content (z-index: -1).
+   DevNexus - Typography & Atmospheric Developer Ecosystem Background
+   Design Direction:
+     - Display Headings: Space Grotesk (500/600/700, tight refined tracking)
+     - UI & Body Copy: Inter (400/500/600/700, crisp legibility)
+     - Technical Metadata: JetBrains Mono (tabular-nums, metrics, badges, CLI)
+   Atmospheric Background Layers:
+     - Deep midnight navy & near-black foundation (#050814 -> #03050c)
+     - Indigo (#4338CA / #6366F1), electric violet (#7C3AED), subtle cyan (#22D3EE)
+     - Fine architectural grid with animated illumination mask + micro-grain texture
+     - Strictly non-intrusive (z-index: -1, pointer-events: none)
    ========================================================================== */
+
+:root {
+  --font-display: 'Space Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
 
 .sparkles-bg-wrap {
   position: fixed;
@@ -19,13 +27,84 @@
 }
 
 /* ==========================================================================
-   1. Floating Luminous Orbs & Blue-Purple Aurora Gradients
+   1. Multi-Layer Atmospheric Foundation
+   ========================================================================== */
+.dx-bg-base {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 85% 55% at 50% -12%, rgba(67, 56, 202, 0.22) 0%, rgba(15, 23, 42, 0.08) 55%, transparent 80%),
+    radial-gradient(ellipse 65% 45% at 88% 12%, rgba(34, 211, 238, 0.07) 0%, transparent 65%),
+    linear-gradient(180deg, #050814 0%, #070b1a 50%, #04060f 100%);
+  transition: background 0.5s ease;
+}
+
+[data-theme="light"] .dx-bg-base {
+  background:
+    radial-gradient(ellipse 85% 55% at 50% -12%, rgba(99, 102, 241, 0.12) 0%, rgba(191, 219, 254, 0.08) 55%, transparent 80%),
+    radial-gradient(ellipse 60% 45% at 88% 12%, rgba(6, 182, 212, 0.06) 0%, transparent 65%),
+    linear-gradient(180deg, #fafbff 0%, #f5f7ff 55%, #ffffff 100%);
+}
+
+/* Fine technical grid with animated radial illumination */
+.dx-bg-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(129, 140, 248, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(129, 140, 248, 0.06) 1px, transparent 1px);
+  background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(ellipse 82% 70% at 50% 24%, #000 18%, rgba(0, 0, 0, 0.45) 56%, transparent 94%);
+  mask-image: radial-gradient(ellipse 82% 70% at 50% 24%, #000 18%, rgba(0, 0, 0, 0.45) 56%, transparent 94%);
+  animation: dxGridBreath 14s ease-in-out infinite alternate;
+}
+
+[data-theme="light"] .dx-bg-grid {
+  background-image:
+    linear-gradient(to right, rgba(79, 70, 229, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(79, 70, 229, 0.06) 1px, transparent 1px);
+}
+
+@keyframes dxGridBreath {
+  0% { opacity: 0.55; transform: translate3d(0, 0, 0); }
+  100% { opacity: 0.92; transform: translate3d(0, -10px, 0); }
+}
+
+/* Subtle top architectural horizon accent */
+.dx-bg-horizon {
+  position: absolute;
+  top: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(980px, 88vw);
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(99, 102, 241, 0.35) 28%, rgba(34, 211, 238, 0.5) 50%, rgba(139, 92, 246, 0.35) 72%, transparent 100%);
+  box-shadow: 0 0 36px 2px rgba(99, 102, 241, 0.22);
+  opacity: 0.8;
+}
+
+/* Tactile micro-noise film grain layer */
+.dx-bg-noise {
+  position: absolute;
+  inset: 0;
+  opacity: 0.028;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+}
+
+[data-theme="light"] .dx-bg-noise {
+  opacity: 0.015;
+}
+
+/* ==========================================================================
+   2. Atmospheric Radial Orbs (Indigo, Electric Violet & Subtle Cyan)
    ========================================================================== */
 .aurora-container {
   position: absolute;
-  inset: -25%;
-  width: 150%;
-  height: 150%;
+  inset: -20%;
+  width: 140%;
+  height: 140%;
   pointer-events: none;
   overflow: hidden;
 }
@@ -33,108 +112,102 @@
 .aurora-orb {
   position: absolute;
   border-radius: 50%;
-  filter: blur(80px);
+  filter: blur(95px);
   will-change: transform, opacity;
   transition: background 0.8s cubic-bezier(0.16, 1, 0.3, 1),
-              opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
-              filter 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+              opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* ---------- Dark Mode Orbs: Midnight Blue, Dark Indigo, Deep Purple & Glowing Violet ---------- */
 .aurora-orb-1 {
-  width: min(720px, 65vw);
-  height: min(720px, 65vw);
-  top: 3%;
-  left: 0%;
+  width: min(760px, 62vw);
+  height: min(760px, 62vw);
+  top: 2%;
+  left: -4%;
   background: radial-gradient(circle at 45% 45%,
-    rgba(124, 58, 237, 0.22) 0%,
-    rgba(67, 56, 202, 0.17) 40%,
-    rgba(23, 20, 58, 0.12) 65%,
-    transparent 76%
+    rgba(124, 58, 237, 0.19) 0%,
+    rgba(67, 56, 202, 0.14) 42%,
+    rgba(23, 20, 58, 0.08) 68%,
+    transparent 78%
   );
-  animation: auroraDrift1 22s ease-in-out infinite alternate;
+  animation: auroraDrift1 26s ease-in-out infinite alternate;
 }
 
 .aurora-orb-2 {
-  width: min(780px, 70vw);
-  height: min(780px, 70vw);
-  top: 12%;
-  right: -5%;
+  width: min(740px, 60vw);
+  height: min(740px, 60vw);
+  top: 10%;
+  right: -6%;
   background: radial-gradient(circle at 50% 50%,
-    rgba(99, 102, 241, 0.20) 0%,
-    rgba(67, 56, 202, 0.16) 45%,
-    rgba(36, 21, 72, 0.13) 65%,
-    transparent 76%
+    rgba(34, 211, 238, 0.11) 0%,
+    rgba(79, 70, 229, 0.14) 42%,
+    rgba(30, 27, 75, 0.09) 68%,
+    transparent 78%
   );
-  animation: auroraDrift2 28s ease-in-out infinite alternate;
+  animation: auroraDrift2 32s ease-in-out infinite alternate;
 }
 
 .aurora-orb-3 {
-  width: min(680px, 60vw);
-  height: min(680px, 60vw);
-  bottom: 5%;
-  left: 20%;
+  width: min(680px, 56vw);
+  height: min(680px, 56vw);
+  bottom: 4%;
+  left: 24%;
   background: radial-gradient(circle at 50% 50%,
-    rgba(167, 139, 250, 0.17) 0%,
-    rgba(124, 58, 237, 0.14) 40%,
-    rgba(16, 21, 43, 0.12) 65%,
-    transparent 76%
+    rgba(139, 92, 246, 0.14) 0%,
+    rgba(67, 56, 202, 0.10) 45%,
+    rgba(16, 21, 43, 0.08) 68%,
+    transparent 78%
   );
-  animation: auroraDrift3 24s ease-in-out infinite alternate;
+  animation: auroraDrift3 28s ease-in-out infinite alternate;
 }
 
-/* ---------- Light Mode Orbs: Subtle Lavender & Powder-Blue Waves ---------- */
 [data-theme="light"] .aurora-orb {
-  filter: blur(90px);
+  filter: blur(105px);
 }
 
 [data-theme="light"] .aurora-orb-1 {
   background: radial-gradient(circle at 45% 45%,
-    rgba(221, 214, 254, 0.60) 0%,
-    rgba(191, 219, 254, 0.42) 42%,
-    rgba(245, 243, 255, 0.18) 65%,
+    rgba(196, 181, 253, 0.45) 0%,
+    rgba(191, 219, 254, 0.30) 45%,
     transparent 76%
   );
 }
 
 [data-theme="light"] .aurora-orb-2 {
   background: radial-gradient(circle at 50% 50%,
-    rgba(191, 219, 254, 0.55) 0%,
-    rgba(221, 214, 254, 0.44) 44%,
-    rgba(237, 233, 254, 0.22) 65%,
+    rgba(165, 243, 252, 0.35) 0%,
+    rgba(199, 210, 254, 0.35) 46%,
     transparent 76%
   );
 }
 
 [data-theme="light"] .aurora-orb-3 {
   background: radial-gradient(circle at 50% 50%,
-    rgba(221, 214, 254, 0.50) 0%,
-    rgba(191, 219, 254, 0.36) 45%,
-    rgba(245, 243, 255, 0.20) 65%,
+    rgba(221, 214, 254, 0.40) 0%,
+    rgba(191, 219, 254, 0.25) 45%,
     transparent 76%
   );
 }
 
 @keyframes auroraDrift1 {
   0% { transform: translate3d(0, 0, 0) scale(1); }
-  50% { transform: translate3d(60px, 45px, 0) scale(1.08); }
-  100% { transform: translate3d(-40px, 75px, 0) scale(0.95); }
+  50% { transform: translate3d(48px, 36px, 0) scale(1.06); }
+  100% { transform: translate3d(-32px, 60px, 0) scale(0.96); }
 }
 
 @keyframes auroraDrift2 {
   0% { transform: translate3d(0, 0, 0) scale(1); }
-  50% { transform: translate3d(-60px, 55px, 0) scale(1.1); }
-  100% { transform: translate3d(45px, -35px, 0) scale(0.93); }
+  50% { transform: translate3d(-52px, 44px, 0) scale(1.08); }
+  100% { transform: translate3d(38px, -28px, 0) scale(0.95); }
 }
 
 @keyframes auroraDrift3 {
   0% { transform: translate3d(0, 0, 0) scale(1); }
-  50% { transform: translate3d(50px, -50px, 0) scale(1.07); }
-  100% { transform: translate3d(-50px, -30px, 0) scale(0.95); }
+  50% { transform: translate3d(42px, -40px, 0) scale(1.05); }
+  100% { transform: translate3d(-44px, -24px, 0) scale(0.96); }
 }
 
 /* ==========================================================================
-   2. Twinkling CSS Starfield Layers
+   3. Refined Celestial Starfield & Micro-Particle Canvas
    ========================================================================== */
 .sparkles-stars-1,
 .sparkles-stars-2 {
@@ -145,97 +218,168 @@
   transition: opacity 0.6s ease;
 }
 
-/* Dark Mode Starfield: Soft Violet, Indigo, Deep Purple & Crisp White */
 .sparkles-stars-1 {
   background-image:
-    radial-gradient(1.2px 1.2px at 35px 50px, rgba(255, 255, 255, 0.85), transparent),
-    radial-gradient(1.5px 1.5px at 160px 100px, rgba(167, 139, 250, 0.8), transparent),
-    radial-gradient(1.6px 1.6px at 300px 220px, rgba(99, 102, 241, 0.8), transparent),
-    radial-gradient(1.2px 1.2px at 450px 90px, rgba(255, 255, 255, 0.9), transparent),
-    radial-gradient(1.5px 1.5px at 580px 260px, rgba(124, 58, 237, 0.75), transparent),
-    radial-gradient(1.6px 1.6px at 720px 150px, rgba(129, 140, 248, 0.75), transparent),
-    radial-gradient(1.2px 1.2px at 860px 320px, rgba(255, 255, 255, 0.85), transparent),
-    radial-gradient(1.5px 1.5px at 1000px 80px, rgba(167, 139, 250, 0.8), transparent),
-    radial-gradient(1.6px 1.6px at 1140px 240px, rgba(99, 102, 241, 0.8), transparent);
-  background-size: 650px 380px;
-  animation: sparklesTwinkle1 6s ease-in-out infinite alternate;
+    radial-gradient(1.1px 1.1px at 45px 60px, rgba(226, 232, 240, 0.6), transparent),
+    radial-gradient(1.3px 1.3px at 185px 115px, rgba(167, 139, 250, 0.55), transparent),
+    radial-gradient(1.3px 1.3px at 320px 230px, rgba(34, 211, 238, 0.45), transparent),
+    radial-gradient(1.1px 1.1px at 470px 95px, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1.3px 1.3px at 610px 270px, rgba(129, 140, 248, 0.55), transparent);
+  background-size: 700px 420px;
+  animation: sparklesTwinkle1 8s ease-in-out infinite alternate;
 }
 
 .sparkles-stars-2 {
   background-image:
-    radial-gradient(1.4px 1.4px at 90px 180px, rgba(129, 140, 248, 0.75), transparent),
-    radial-gradient(1.6px 1.6px at 220px 320px, rgba(255, 255, 255, 0.85), transparent),
-    radial-gradient(1.5px 1.5px at 370px 120px, rgba(124, 58, 237, 0.75), transparent),
-    radial-gradient(1.5px 1.5px at 520px 340px, rgba(99, 102, 241, 0.75), transparent),
-    radial-gradient(1.3px 1.3px at 660px 70px, rgba(255, 255, 255, 0.85), transparent),
-    radial-gradient(1.6px 1.6px at 810px 230px, rgba(167, 139, 250, 0.75), transparent),
-    radial-gradient(1.4px 1.4px at 950px 350px, rgba(129, 140, 248, 0.75), transparent),
-    radial-gradient(1.6px 1.6px at 1090px 170px, rgba(124, 58, 237, 0.8), transparent);
-  background-size: 750px 420px;
-  animation: sparklesTwinkle2 8s ease-in-out infinite 2s alternate;
+    radial-gradient(1.2px 1.2px at 110px 190px, rgba(129, 140, 248, 0.5), transparent),
+    radial-gradient(1.4px 1.4px at 260px 330px, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1.2px 1.2px at 420px 135px, rgba(34, 211, 238, 0.4), transparent),
+    radial-gradient(1.3px 1.3px at 680px 85px, rgba(167, 139, 250, 0.55), transparent);
+  background-size: 780px 460px;
+  animation: sparklesTwinkle2 10s ease-in-out infinite 2s alternate;
 }
 
-/* Light Mode Starfield: Pale Purple, Lavender & Powder Blue */
 [data-theme="light"] .sparkles-stars-1 {
-  background-image:
-    radial-gradient(1.4px 1.4px at 35px 50px, rgba(124, 58, 237, 0.65), transparent),
-    radial-gradient(1.6px 1.6px at 160px 100px, rgba(59, 130, 246, 0.65), transparent),
-    radial-gradient(1.7px 1.7px at 300px 220px, rgba(99, 102, 241, 0.6), transparent),
-    radial-gradient(1.4px 1.4px at 450px 90px, rgba(167, 139, 250, 0.6), transparent),
-    radial-gradient(1.6px 1.6px at 580px 260px, rgba(124, 58, 237, 0.55), transparent),
-    radial-gradient(1.7px 1.7px at 720px 150px, rgba(59, 130, 246, 0.65), transparent),
-    radial-gradient(1.4px 1.4px at 860px 320px, rgba(99, 102, 241, 0.6), transparent),
-    radial-gradient(1.6px 1.6px at 1000px 80px, rgba(167, 139, 250, 0.6), transparent),
-    radial-gradient(1.7px 1.7px at 1140px 240px, rgba(124, 58, 237, 0.65), transparent);
-  opacity: 0.7;
+  opacity: 0.25;
 }
 
 [data-theme="light"] .sparkles-stars-2 {
-  background-image:
-    radial-gradient(1.5px 1.5px at 90px 180px, rgba(99, 102, 241, 0.6), transparent),
-    radial-gradient(1.7px 1.7px at 220px 320px, rgba(167, 139, 250, 0.6), transparent),
-    radial-gradient(1.5px 1.5px at 370px 120px, rgba(124, 58, 237, 0.65), transparent),
-    radial-gradient(1.7px 1.7px at 520px 340px, rgba(59, 130, 246, 0.55), transparent),
-    radial-gradient(1.5px 1.5px at 660px 70px, rgba(167, 139, 250, 0.65), transparent),
-    radial-gradient(1.7px 1.7px at 810px 230px, rgba(99, 102, 241, 0.6), transparent),
-    radial-gradient(1.5px 1.5px at 950px 350px, rgba(124, 58, 237, 0.65), transparent),
-    radial-gradient(1.7px 1.7px at 1090px 170px, rgba(59, 130, 246, 0.6), transparent);
-  opacity: 0.65;
+  opacity: 0.2;
 }
 
 @keyframes sparklesTwinkle1 {
-  0% { opacity: 0.45; transform: translateY(0); }
-  50% { opacity: 0.95; }
-  100% { opacity: 0.55; transform: translateY(-6px); }
+  0% { opacity: 0.35; transform: translateY(0); }
+  100% { opacity: 0.72; transform: translateY(-6px); }
 }
 
 @keyframes sparklesTwinkle2 {
-  0% { opacity: 0.5; transform: translateY(0); }
-  50% { opacity: 1; }
-  100% { opacity: 0.6; transform: translateY(-8px); }
+  0% { opacity: 0.3; transform: translateY(0); }
+  100% { opacity: 0.68; transform: translateY(-8px); }
 }
 
-/* ==========================================================================
-   3. Canvas Layer: Floating Sparkles, 4-Point Twinkling Stars & Light Trails
-   ========================================================================== */
 .sparkles-canvas {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   pointer-events: none;
+  opacity: 0.85;
 }
 
 /* ==========================================================================
-   4. Accessibility: Prefers-reduced-motion
+   4. Shared Global Typography System & Technical Micro-Primitives
+   ========================================================================== */
+body {
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4,
+.logo,
+.hero h1,
+.sec-head h2,
+.dash-card-title,
+.profile-name-lg,
+.projects-title-group h1,
+.guide-header h1,
+.leaderboard-title-group h1,
+.section-title,
+.xp-title h1 {
+  font-family: var(--font-display);
+  letter-spacing: -0.022em;
+}
+
+h1 { font-weight: 700; line-height: 1.12; letter-spacing: -0.028em; }
+h2 { font-weight: 600; line-height: 1.2; letter-spacing: -0.022em; }
+h3 { font-weight: 600; line-height: 1.28; letter-spacing: -0.015em; }
+h4 { font-weight: 600; line-height: 1.35; }
+
+code, kbd, pre,
+.kbd,
+.issue-number,
+.stage-timestamp,
+.roadmap-phase-tag,
+.disclosure-badge,
+.meta-pill,
+.compat-badge,
+.dx-mono {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-val,
+.readiness-score-num,
+.stat .n,
+#sync-stat-commits,
+#sync-stat-contribs,
+#sync-stat-repos,
+#sync-stat-prs,
+#sync-stat-issues {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+
+.metric-title,
+.skills-section h4,
+.dx-eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.dx-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  color: #a5f3fc;
+  background: rgba(34, 211, 238, 0.08);
+  border: 1px solid rgba(34, 211, 238, 0.25);
+  margin-bottom: 18px;
+}
+
+[data-theme="light"] .dx-eyebrow {
+  color: #4338ca;
+  background: rgba(99, 102, 241, 0.08);
+  border-color: rgba(99, 102, 241, 0.24);
+}
+
+.dx-text-gradient {
+  background: linear-gradient(120deg, #f8fafc 0%, #c4b5fd 46%, #38bdf8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+[data-theme="light"] .dx-text-gradient {
+  background: linear-gradient(120deg, #1e1b4b 0%, #5b21b6 50%, #0284c7 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ==========================================================================
+   5. Accessibility: Prefers-reduced-motion
    ========================================================================== */
 @media (prefers-reduced-motion: reduce) {
   .aurora-orb,
+  .dx-bg-grid,
   .sparkles-stars-1,
   .sparkles-stars-2 {
     animation: none !important;
   }
   .sparkles-canvas {
     display: none !important;
+  }
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

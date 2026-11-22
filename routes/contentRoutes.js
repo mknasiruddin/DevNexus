@@ -9,13 +9,41 @@ const {
   getLeaderboard,
   getLeaderboardStats,
   setRoadmapStepStatus,
-  resetUserRoadmapProgress
+  resetUserRoadmapProgress,
+  findUserById
 } = require('../db/database');
-const { syncContributorFromGitHub } = require('../services/githubService');
+const { syncContributorFromGitHub, searchIssues } = require('../services/githubService');
+const { getUserDashboardSyncData } = require('../services/githubSyncService');
 const {
   getRoadmapStagesWithProgress,
   calculateContributionReadiness
 } = require('../services/saanviModulesService');
+
+async function computeRoadmapReadiness(req, completedCount) {
+  const freshUser = findUserById(req.user.id) || req.user;
+  let userSkills = [];
+  try {
+    userSkills = JSON.parse(freshUser.skills || '[]');
+  } catch (e) {
+    userSkills = [];
+  }
+  const synced = freshUser.github_id
+    ? getUserDashboardSyncData(freshUser.id, freshUser.github_id, { isSelf: true, repoLimit: 100, activityLimit: 0 })
+    : null;
+  const cachedIssues = await searchIssues(
+    { query: '', label: 'all', language: 'all', page: 1, perPage: 8 },
+    userSkills,
+    req.session ? req.session.githubToken : null,
+    { cacheOnly: true }
+  ).catch(() => ({ issues: [] }));
+  return calculateContributionReadiness(freshUser, cachedIssues.issues || [], {
+    roadmapCompletedCount: completedCount,
+    roadmapVerified: true,
+    repositories: synced ? (synced.repos || []) : [],
+    languageDistribution: synced && synced.syncState ? (synced.syncState.languageDistribution || []) : [],
+    isStale: Boolean(cachedIssues.stale)
+  });
+}
 
 
 // 1. Contribution Guide, First Contribution Roadmap & Learning Hub
@@ -84,7 +112,7 @@ router.get('/api/roadmap', (req, res) => {
   }
 });
 
-router.post('/api/roadmap/step', (req, res) => {
+router.post('/api/roadmap/step', async (req, res) => {
   if (!req.user || !req.user.id) {
     return res.status(401).json({
       success: false,
@@ -110,15 +138,14 @@ router.post('/api/roadmap/step', (req, res) => {
   try {
     setRoadmapStepStatus(req.user.id, parsedStep, completed);
     const updatedRoadmap = getRoadmapStagesWithProgress(req.user.id);
-    const readiness = calculateContributionReadiness(req.user, [], {
-      roadmapCompletedCount: updatedRoadmap.completedCount
-    });
+    const readiness = await computeRoadmapReadiness(req, updatedRoadmap.completedCount);
     return res.json({
       success: true,
       stepNumber: parsedStep,
       completed,
       ...updatedRoadmap,
-      readinessScore: readiness.score
+      readinessScore: readiness.score,
+      readiness
     });
   } catch (err) {
     return res.status(400).json({
@@ -128,7 +155,7 @@ router.post('/api/roadmap/step', (req, res) => {
   }
 });
 
-router.post('/api/roadmap/reset', (req, res) => {
+router.post('/api/roadmap/reset', async (req, res) => {
   if (!req.user || !req.user.id) {
     return res.status(401).json({
       success: false,
@@ -138,9 +165,12 @@ router.post('/api/roadmap/reset', (req, res) => {
   try {
     resetUserRoadmapProgress(req.user.id);
     const updatedRoadmap = getRoadmapStagesWithProgress(req.user.id);
+    const readiness = await computeRoadmapReadiness(req, updatedRoadmap.completedCount);
     return res.json({
       success: true,
-      ...updatedRoadmap
+      ...updatedRoadmap,
+      readinessScore: readiness.score,
+      readiness
     });
   } catch (err) {
     return res.status(400).json({

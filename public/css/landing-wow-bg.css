@@ -1,0 +1,333 @@
+/* ==========================================================================
+   DevNexus Landing Page — Atmospheric 3D Technical Environment Background
+   Isolated strictly to views/landing.ejs (z-index: -1, pointer-events: none).
+   Palette: Deep midnight navy, royal blue, electric indigo, rich violet,
+            ice cyan, subtle purple lighting.
+   ========================================================================== */
+
+.dx-wow-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+  --px: 0;
+  --py: 0;
+}
+
+/* ---------- 1. Multi-Layer Atmospheric Gradient Lighting ---------- */
+.dx-wow-atmo {
+  position: absolute;
+  inset: -8%;
+  background:
+    radial-gradient(ellipse 68% 48% at 18% 22%, rgba(37, 99, 235, 0.22) 0%, rgba(67, 56, 202, 0.1) 46%, transparent 74%),
+    radial-gradient(ellipse 60% 52% at 82% 26%, rgba(124, 58, 237, 0.24) 0%, rgba(109, 40, 217, 0.1) 48%, transparent 76%),
+    radial-gradient(ellipse 55% 42% at 54% 78%, rgba(34, 211, 238, 0.12) 0%, rgba(59, 130, 246, 0.08) 45%, transparent 76%),
+    radial-gradient(ellipse 90% 60% at 50% -10%, rgba(79, 70, 229, 0.28) 0%, transparent 72%),
+    linear-gradient(180deg, #040714 0%, #070b1e 50%, #03050e 100%);
+  animation: dxAtmoShift 24s ease-in-out infinite alternate;
+  transform: translate3d(calc(var(--px) * -6px), calc(var(--py) * -6px), 0);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-theme="light"] .dx-wow-atmo {
+  background:
+    radial-gradient(ellipse 68% 48% at 18% 22%, rgba(59, 130, 246, 0.14) 0%, transparent 72%),
+    radial-gradient(ellipse 60% 52% at 82% 26%, rgba(124, 58, 237, 0.14) 0%, transparent 74%),
+    radial-gradient(ellipse 55% 42% at 54% 78%, rgba(6, 182, 212, 0.1) 0%, transparent 74%),
+    linear-gradient(180deg, #f8faff 0%, #f1f5ff 55%, #ffffff 100%);
+}
+
+@keyframes dxAtmoShift {
+  0% { filter: hue-rotate(0deg) brightness(1); transform: scale(1) translate3d(calc(var(--px) * -6px), calc(var(--py) * -6px), 0); }
+  50% { filter: hue-rotate(6deg) brightness(1.04); transform: scale(1.03) translate3d(calc(var(--px) * -6px), calc(var(--py) * -6px), 0); }
+  100% { filter: hue-rotate(-5deg) brightness(0.98); transform: scale(1.01) translate3d(calc(var(--px) * -6px), calc(var(--py) * -6px), 0); }
+}
+
+/* ---------- 2. Subtle Perspective Floor Grid ---------- */
+.dx-perspective-wrap {
+  position: absolute;
+  inset: 0;
+  perspective: 950px;
+  overflow: hidden;
+  opacity: 0.72;
+}
+
+.dx-perspective-plane {
+  position: absolute;
+  left: -30%;
+  right: -30%;
+  bottom: -24%;
+  height: 78%;
+  transform-origin: center bottom;
+  transform:
+    rotateX(66deg)
+    translate3d(calc(var(--px) * -14px), calc(var(--py) * 8px), 0);
+  background-image:
+    linear-gradient(to right, rgba(99, 102, 241, 0.22) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(34, 211, 238, 0.18) 1px, transparent 1px);
+  background-size: 56px 56px;
+  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.92) 8%, rgba(0, 0, 0, 0.45) 55%, transparent 94%);
+  mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.92) 8%, rgba(0, 0, 0, 0.45) 55%, transparent 94%);
+  animation: dxPerspectiveScroll 18s linear infinite;
+}
+
+[data-theme="light"] .dx-perspective-plane {
+  background-image:
+    linear-gradient(to right, rgba(79, 70, 229, 0.13) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(8, 145, 178, 0.11) 1px, transparent 1px);
+}
+
+@keyframes dxPerspectiveScroll {
+  0% { background-position: 0 0, 0 0; }
+  100% { background-position: 0 56px, 0 56px; }
+}
+
+/* ---------- 3. Concentric Orbital Rings & Telemetry Markers ---------- */
+.dx-orbital-layer {
+  position: absolute;
+  inset: 0;
+  transform: translate3d(calc(var(--px) * -12px), calc(var(--py) * -10px), 0);
+  transition: transform 0.2s ease-out;
+}
+
+.dx-orbit-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(99, 102, 241, 0.18);
+  box-shadow: inset 0 0 28px rgba(67, 56, 202, 0.06);
+}
+
+.dx-orbit-ring::before,
+.dx-orbit-ring::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+}
+
+.dx-orbit-1 {
+  width: min(760px, 68vw);
+  height: min(760px, 68vw);
+  top: -18%;
+  right: -12%;
+  border-color: rgba(59, 130, 246, 0.22);
+  border-style: dashed;
+  animation: dxOrbitCW 54s linear infinite;
+}
+.dx-orbit-1::before {
+  width: 7px;
+  height: 7px;
+  top: 14%;
+  left: 14%;
+  background: #22d3ee;
+  box-shadow: 0 0 14px 3px rgba(34, 211, 238, 0.75);
+}
+
+.dx-orbit-2 {
+  width: min(560px, 52vw);
+  height: min(560px, 52vw);
+  top: -6%;
+  right: -4%;
+  border-color: rgba(139, 92, 246, 0.24);
+  animation: dxOrbitCCW 38s linear infinite;
+}
+.dx-orbit-2::before {
+  width: 6px;
+  height: 6px;
+  bottom: 16%;
+  right: 14%;
+  background: #a78bfa;
+  box-shadow: 0 0 14px 3px rgba(167, 139, 250, 0.7);
+}
+
+.dx-orbit-3 {
+  width: min(640px, 58vw);
+  height: min(640px, 58vw);
+  bottom: -22%;
+  left: -14%;
+  border-color: rgba(34, 211, 238, 0.16);
+  border-style: dotted;
+  animation: dxOrbitCW 68s linear infinite;
+}
+.dx-orbit-3::before {
+  width: 6px;
+  height: 6px;
+  top: 18%;
+  right: 18%;
+  background: #60a5fa;
+  box-shadow: 0 0 14px 3px rgba(96, 165, 250, 0.7);
+}
+
+[data-theme="light"] .dx-orbit-ring {
+  border-color: rgba(79, 70, 229, 0.14);
+}
+
+@keyframes dxOrbitCW {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes dxOrbitCCW {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+/* ---------- 4. Animated Git Branching & Circuit Pathways SVG ---------- */
+.dx-circuit-layer {
+  position: absolute;
+  inset: 0;
+  transform: translate3d(calc(var(--px) * -16px), calc(var(--py) * -14px), 0);
+  transition: transform 0.18s ease-out;
+}
+
+.dx-circuit-svg {
+  width: 100%;
+  height: 100%;
+  opacity: 0.72;
+}
+
+[data-theme="light"] .dx-circuit-svg {
+  opacity: 0.42;
+}
+
+.dx-path-base {
+  fill: none;
+  stroke: rgba(99, 102, 241, 0.22);
+  stroke-width: 1.25;
+}
+
+.dx-path-cyan {
+  fill: none;
+  stroke: rgba(34, 211, 238, 0.22);
+  stroke-width: 1.25;
+}
+
+.dx-pulse-flow {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 46 280;
+  animation: dxPulseTravel 8s linear infinite;
+}
+
+.dx-pulse-cyan {
+  stroke: url(#dxGradCyan);
+  filter: drop-shadow(0 0 6px rgba(34, 211, 238, 0.65));
+  animation-duration: 7.5s;
+}
+
+.dx-pulse-violet {
+  stroke: url(#dxGradViolet);
+  filter: drop-shadow(0 0 6px rgba(139, 92, 246, 0.65));
+  animation-duration: 10.5s;
+  animation-delay: -3.2s;
+}
+
+.dx-pulse-blue {
+  stroke: url(#dxGradBlue);
+  filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.65));
+  animation-duration: 9s;
+  animation-delay: -5.4s;
+}
+
+@keyframes dxPulseTravel {
+  from { stroke-dashoffset: 326; }
+  to { stroke-dashoffset: 0; }
+}
+
+.dx-node-ring {
+  fill: rgba(5, 8, 20, 0.85);
+  stroke-width: 1.6;
+  animation: dxNodePulse 4.5s ease-in-out infinite alternate;
+}
+
+.dx-node-core {
+  animation: dxNodePulse 4.5s ease-in-out infinite alternate;
+}
+
+@keyframes dxNodePulse {
+  0% { opacity: 0.55; transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1.08); }
+}
+
+/* ---------- 5. 3D Wireframe Canvas & Electric Light Trails ---------- */
+.dx-wireframe-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ---------- 6. Floating Code & Git Glyphs (Multi-Depth) ---------- */
+.dx-glyph-layer {
+  position: absolute;
+  inset: 0;
+  transform: translate3d(calc(var(--px) * -22px), calc(var(--py) * -18px), 0);
+  transition: transform 0.2s ease-out;
+}
+
+.dx-glyph {
+  position: absolute;
+  font-family: var(--mono);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  user-select: none;
+  color: rgba(165, 180, 252, 0.2);
+  text-shadow: 0 0 18px rgba(99, 102, 241, 0.25);
+  animation: dxGlyphFloat 14s ease-in-out infinite alternate;
+}
+
+.dx-glyph.cyan {
+  color: rgba(103, 232, 249, 0.22);
+  text-shadow: 0 0 18px rgba(34, 211, 238, 0.24);
+}
+
+.dx-glyph.violet {
+  color: rgba(196, 181, 253, 0.2);
+  text-shadow: 0 0 18px rgba(139, 92, 246, 0.24);
+}
+
+[data-theme="light"] .dx-glyph {
+  color: rgba(67, 56, 202, 0.14);
+  text-shadow: none;
+}
+
+.dx-g1 { top: 15%; left: 7%; font-size: 20px; animation-duration: 13s; }
+.dx-g2 { top: 24%; left: 45%; font-size: 15px; animation-duration: 16s; animation-delay: -4s; }
+.dx-g3 { top: 68%; left: 10%; font-size: 18px; animation-duration: 15s; animation-delay: -7s; }
+.dx-g4 { top: 76%; right: 8%; font-size: 21px; animation-duration: 14s; animation-delay: -2s; }
+.dx-g5 { top: 44%; right: 6%; font-size: 15px; animation-duration: 17s; animation-delay: -9s; }
+.dx-g6 { top: 58%; left: 49%; font-size: 13px; animation-duration: 19s; animation-delay: -5s; }
+
+@keyframes dxGlyphFloat {
+  0% { transform: translate3d(0, 0, 0) rotate(-2deg); opacity: 0.45; }
+  50% { transform: translate3d(8px, -14px, 0) rotate(2deg); opacity: 0.85; }
+  100% { transform: translate3d(-6px, -24px, 0) rotate(-1deg); opacity: 0.55; }
+}
+
+/* ---------- 7. Accessibility: Reduced Motion & Small Screens ---------- */
+@media (max-width: 720px) {
+  .dx-glyph-layer { opacity: 0.55; }
+  .dx-perspective-wrap { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dx-wow-atmo,
+  .dx-perspective-plane,
+  .dx-orbit-1,
+  .dx-orbit-2,
+  .dx-orbit-3,
+  .dx-pulse-flow,
+  .dx-node-ring,
+  .dx-node-core,
+  .dx-glyph {
+    animation: none !important;
+  }
+  .dx-wow-atmo,
+  .dx-perspective-plane,
+  .dx-orbital-layer,
+  .dx-circuit-layer,
+  .dx-glyph-layer {
+    transform: none !important;
+  }
+}
