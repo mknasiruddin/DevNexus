@@ -33,6 +33,12 @@
           <% if (portfolio.settings && portfolio.settings.location) { %>
           <div class="hero-location">📍 <%= portfolio.settings.location %></div>
           <% } %>
+          <% if (portfolio.readinessScore) { %>
+          <div class="hero-location" id="portfolio-readiness-summary">
+            Contribution Readiness: <strong><%= portfolio.readinessScore.isSufficientData ? `${portfolio.readinessScore.score}%` : '--%' %></strong>
+            (<%= portfolio.readinessScore.readinessLevel %>)
+          </div>
+          <% } %>
 
           <div class="hero-links">
             <% if (portfolio.settings && portfolio.settings.github_url) { %>
@@ -73,12 +79,12 @@
         </div>
         <div class="metric-card">
           <div class="metric-icon">📦</div>
-          <div class="metric-value"><%= portfolio.repos ? portfolio.repos.length : 0 %></div>
+          <div class="metric-value"><%= portfolio.allReposCount !== undefined ? portfolio.allReposCount : (portfolio.repos ? portfolio.repos.length : 0) %></div>
           <div class="metric-label">Repositories</div>
         </div>
         <div class="metric-card">
           <div class="metric-icon">⭐</div>
-          <div class="metric-value"><%= portfolio.repos ? portfolio.repos.reduce((s, r) => s + (r.stargazers_count || 0), 0) : 0 %></div>
+          <div class="metric-value"><%= portfolio.totalStars !== undefined ? portfolio.totalStars : (portfolio.repos ? portfolio.repos.reduce((s, r) => s + (r.stars !== undefined ? r.stars : (r.stargazers_count || 0)), 0) : 0) %></div>
           <div class="metric-label">Total Stars</div>
         </div>
         <div class="metric-card">

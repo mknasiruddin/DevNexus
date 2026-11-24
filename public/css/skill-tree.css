@@ -6,9 +6,9 @@
    ===================================================================== */
 
 .skill-tree-main {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 32px 20px 80px;
+  width: min(1200px, 100% - 48px);
+  margin-inline: auto;
+  padding: 32px 0 64px;
   flex: 1;
 }
 
@@ -18,10 +18,12 @@
 
 .xp-header {
   background: var(--surface);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 28px 32px;
-  margin-bottom: 32px;
+  border-radius: 12px;
+  padding: 26px 30px;
+  margin-bottom: 28px;
   box-shadow: var(--shadow);
 }
 
@@ -43,9 +45,11 @@
 
 .xp-title h1 {
   margin: 0;
-  font-size: 26px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 3vw, 2.05rem);
+  font-weight: 700;
+  letter-spacing: -0.028em;
+  line-height: 1.14;
   color: var(--text);
 }
 
@@ -218,8 +222,10 @@
   flex-direction: column;
   gap: 0;
   background: var(--surface);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 12px;
   padding: 0 0 20px;
   box-shadow: var(--shadow);
   overflow: hidden;
@@ -301,7 +307,7 @@
 
 .skill-node:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 8px 20px -6px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-hover);
 }
 
 .skill-node:focus-visible {
@@ -426,15 +432,15 @@
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #22c55e;
+  background: var(--success);
   color: #fff;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
   border: 2px solid var(--bg);
-  box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--success) 50%, transparent);
 }
 
 /* Pulsing ring for available nodes */
@@ -652,9 +658,9 @@
 }
 
 .inspector-status.status-unlocked {
-  color: #4ade80;
-  background: rgba(34, 197, 94, 0.14);
-  border: 1px solid rgba(34, 197, 94, 0.4);
+  color: var(--success);
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
 }
 
 /* Unlock button */
@@ -662,9 +668,9 @@
   display: block;
   width: 100%;
   padding: 12px 20px;
-  border-radius: 10px;
+  border-radius: 8px;
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   color: #fff;
   background: var(--accent);
   border: 1px solid rgba(255, 255, 255, 0.18);
@@ -677,7 +683,7 @@
 .btn-unlock:hover:not(:disabled) {
   background: var(--accent-hover);
   box-shadow: var(--btn-glow-hover);
-  filter: brightness(1.1);
+  filter: brightness(1.08);
   transform: translateY(-1px);
 }
 
@@ -700,15 +706,15 @@
 }
 
 .unlock-msg.unlock-success {
-  color: #4ade80;
-  background: rgba(34, 197, 94, 0.14);
-  border: 1px solid rgba(34, 197, 94, 0.4);
+  color: var(--success);
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
 }
 
 .unlock-msg.unlock-error {
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.12);
-  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: var(--danger);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
 }
 
 /* =====================================================================
@@ -717,7 +723,8 @@
 
 @media (max-width: 768px) {
   .skill-tree-main {
-    padding: 20px 12px 60px;
+    width: calc(100% - 32px);
+    padding: 24px 0 56px;
   }
 
   .xp-header {

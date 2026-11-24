@@ -65,6 +65,7 @@ const SKILL_DISPLAY_NAMES = {
   'node.js': 'Node.js',
   express: 'Express.js',
   'express.js': 'Express.js',
+  expressjs: 'Express.js',
   nestjs: 'NestJS',
   django: 'Django',
   flask: 'Flask',
@@ -110,7 +111,10 @@ const SKILL_DISPLAY_NAMES = {
   figma: 'Figma',
   storybook: 'Storybook',
   graphql: 'GraphQL',
-  rest: 'REST API',
+  rest: 'REST APIs',
+  'rest api': 'REST APIs',
+  'rest apis': 'REST APIs',
+  restful: 'REST APIs',
   grpc: 'gRPC',
   git: 'Git',
   linux: 'Linux',
@@ -155,7 +159,13 @@ const CANONICAL_SKILL_ALIASES = {
   html5: 'html',
   css3: 'css',
   'vue.js': 'vue',
-  'express.js': 'express',
+  express: 'express.js',
+  expressjs: 'express.js',
+  'express.js': 'express.js',
+  rest: 'rest apis',
+  'rest api': 'rest apis',
+  restful: 'rest apis',
+  'rest apis': 'rest apis',
   'shell / bash': 'bash'
 };
 
@@ -192,15 +202,57 @@ function normalizeSkillList(rawSkills) {
   return normalized;
 }
 
+const STRICT_PROSE_TOKENS = new Set(['c', 'go', 'bash', 'shell', 'rest', 'express', 'spring']);
+
 function extractRequiredSkillsFromContext(issues = [], targetContext = null) {
   const detected = new Set();
 
-  const scanTextForSkills = (text) => {
+  const addExplicit = (val) => {
+    if (!val || typeof val !== 'string') return;
+    const clean = val.trim();
+    if (!clean || /^(all|unknown|other|none|markdown)$/i.test(clean)) return;
+    const canonical = toCanonicalSkill(clean);
+    if (canonical) detected.add(canonical);
+  };
+
+  const scanTextForSkills = (text, { strict = true } = {}) => {
     if (!text || typeof text !== 'string') return;
-    const lower = text.toLowerCase();
+    const raw = text.trim();
+    if (!raw) return;
+    const lower = raw.toLowerCase();
+
     for (const skill of KNOWN_TECH_SKILLS) {
+      if (strict && STRICT_PROSE_TOKENS.has(skill)) {
+        if (skill === 'go') {
+          if (/(^|[^a-zA-Z0-9])Go([^a-zA-Z0-9]|$)/.test(raw) || /\bgolang\b/i.test(raw)) {
+            detected.add('go');
+          }
+        } else if (skill === 'c') {
+          if (/(^|[^a-zA-Z0-9+])(ANSI\s+C|C\s+language|C\/C\+\+)([^a-zA-Z0-9+]|$)/i.test(raw)) {
+            detected.add('c');
+          }
+        } else if (skill === 'rest') {
+          if (/(^|[^a-zA-Z0-9])(REST|REST\s+API|RESTful)([^a-zA-Z0-9]|$)/.test(raw)) {
+            detected.add('rest apis');
+          }
+        } else if (skill === 'express') {
+          if (/\bExpress\.js\b/i.test(raw) || /\bexpressjs\b/i.test(raw)) {
+            detected.add('express.js');
+          }
+        } else if (skill === 'spring') {
+          if (/\bSpring\s+Boot\b/i.test(raw) || /\bSpring\s+Framework\b/i.test(raw)) {
+            detected.add('spring boot');
+          }
+        } else if (skill === 'bash' || skill === 'shell') {
+          if (/\b(bash|shell\s+script|zsh)\b/i.test(raw)) {
+            detected.add('bash');
+          }
+        }
+        continue;
+      }
+
       const escaped = skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const regex = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i');
+      const regex = new RegExp(`(^|[^a-z0-9+#.])${escaped}([^a-z0-9+#.]|$)`, 'i');
       if (regex.test(lower)) {
         const canonical = toCanonicalSkill(skill);
         if (canonical) detected.add(canonical);
@@ -210,24 +262,22 @@ function extractRequiredSkillsFromContext(issues = [], targetContext = null) {
 
   if (targetContext && typeof targetContext === 'object') {
     if (Array.isArray(targetContext.requiredSkills)) {
-      for (const s of targetContext.requiredSkills) {
-        const canonical = toCanonicalSkill(s);
-        if (canonical) detected.add(canonical);
+      for (const s of targetContext.requiredSkills) addExplicit(typeof s === 'string' ? s : s?.name);
+    }
+    addExplicit(targetContext.language);
+    addExplicit(targetContext.repoLanguage);
+    if (Array.isArray(targetContext.repoTopics)) {
+      for (const topic of targetContext.repoTopics) {
+        const tc = toCanonicalSkill(String(topic || ''));
+        if (tc && KNOWN_TECH_SKILLS.includes(String(topic || '').toLowerCase())) detected.add(tc);
+        else scanTextForSkills(String(topic || ''), { strict: false });
       }
     }
-    if (targetContext.language && targetContext.language !== 'all' && targetContext.language !== 'Other') {
-      const canonical = toCanonicalSkill(targetContext.language);
-      if (canonical) detected.add(canonical);
-    }
-    if (targetContext.repoLanguage && targetContext.repoLanguage !== 'all' && targetContext.repoLanguage !== 'Other') {
-      const canonical = toCanonicalSkill(targetContext.repoLanguage);
-      if (canonical) detected.add(canonical);
-    }
-    scanTextForSkills(targetContext.title);
-    scanTextForSkills(targetContext.description || targetContext.body);
+    scanTextForSkills(targetContext.title, { strict: true });
+    scanTextForSkills(targetContext.description || targetContext.body, { strict: true });
     if (Array.isArray(targetContext.labels)) {
       for (const lbl of targetContext.labels) {
-        scanTextForSkills(typeof lbl === 'string' ? lbl : lbl?.name);
+        scanTextForSkills(typeof lbl === 'string' ? lbl : lbl?.name, { strict: false });
       }
     }
   }
@@ -235,16 +285,34 @@ function extractRequiredSkillsFromContext(issues = [], targetContext = null) {
   const safeIssues = Array.isArray(issues) ? issues : [];
   for (const iss of safeIssues.slice(0, 12)) {
     if (!iss || typeof iss !== 'object') continue;
-    if (iss.language && iss.language !== 'Unknown' && iss.language !== 'Other') {
-      const canonical = toCanonicalSkill(iss.language);
-      if (canonical) detected.add(canonical);
+    if (Array.isArray(iss.requiredSkills)) {
+      for (const s of iss.requiredSkills) addExplicit(typeof s === 'string' ? s : s?.name);
     }
-    scanTextForSkills(iss.repoName);
-    scanTextForSkills(iss.title);
-    scanTextForSkills(iss.body || iss.description);
+    addExplicit(iss.language);
+    addExplicit(iss.repoLanguage);
+
+    const topics = Array.isArray(iss.repoTopics) ? iss.repoTopics : (Array.isArray(iss.topics) ? iss.topics : []);
+    for (const topic of topics) {
+      const tLower = String(topic || '').trim().toLowerCase();
+      if (!tLower) continue;
+      if (KNOWN_TECH_SKILLS.includes(tLower) || CANONICAL_SKILL_ALIASES[tLower]) {
+        const tc = toCanonicalSkill(tLower);
+        if (tc) detected.add(tc);
+      }
+    }
+
+    scanTextForSkills(iss.repoName, { strict: true });
+    scanTextForSkills(iss.title, { strict: true });
+    scanTextForSkills(iss.body || iss.description, { strict: true });
     if (Array.isArray(iss.labels)) {
       for (const lbl of iss.labels) {
-        scanTextForSkills(typeof lbl === 'string' ? lbl : lbl?.name);
+        const lname = String(typeof lbl === 'string' ? lbl : (lbl?.name || '')).trim().toLowerCase();
+        if (KNOWN_TECH_SKILLS.includes(lname) || CANONICAL_SKILL_ALIASES[lname]) {
+          const lc = toCanonicalSkill(lname);
+          if (lc) detected.add(lc);
+        } else {
+          scanTextForSkills(lname, { strict: true });
+        }
       }
     }
   }
@@ -383,7 +451,27 @@ function calculateContributionReadiness(userProfile = null, issues = [], targetC
   const missingSkills = missingCanonical.slice(0, 6).map(formatSkillName);
   const verifiedRepoSkills = matchedRepoCanonical.map(formatSkillName);
 
-  // --- Factor 1: Skill & Repository Alignment (Max 35 pts, 0 baseline when missing/unmatched) ---
+  const syncState = safeContext.syncState && typeof safeContext.syncState === 'object' ? safeContext.syncState : null;
+  const githubConnected = Boolean(safeUser.github_id || safeContext.githubConnected || syncState);
+  const verifiedReposCount = Array.isArray(safeContext.repositories)
+    ? safeContext.repositories.length
+    : (syncState ? Math.max(0, Number(syncState.totalRepos) || 0) : 0);
+  const verifiedCommits = syncState ? Math.max(0, Number(syncState.totalCommits) || 0) : 0;
+  const verifiedPrsCreated = syncState ? Math.max(0, Number(syncState.prsCreated) || 0) : 0;
+  const verifiedPrsMerged = syncState ? Math.max(0, Number(syncState.prsMerged) || 0) : 0;
+  const verifiedIssuesCreated = syncState ? Math.max(0, Number(syncState.issuesCreated) || 0) : 0;
+  const verifiedContributions = syncState
+    ? Math.max(0, Number(syncState.contributionsCount) || (verifiedCommits + verifiedPrsCreated + verifiedIssuesCreated))
+    : 0;
+
+  let contribProofBonus = 0;
+  if (githubConnected && verifiedContributions > 0) {
+    if (verifiedPrsMerged > 0 || verifiedContributions >= 10) contribProofBonus = 3;
+    else if (verifiedPrsCreated > 0 || verifiedCommits >= 5 || verifiedContributions >= 3) contribProofBonus = 2;
+    else contribProofBonus = 1;
+  }
+
+  // --- Factor 1: Skill, Repository & Contribution Alignment (Max 35 pts, 0 baseline when missing/unmatched) ---
   let skillAlignmentPoints = 0;
   let skillAlignmentReason = '';
   if (declaredSkills.length === 0) {
@@ -398,13 +486,13 @@ function calculateContributionReadiness(userProfile = null, issues = [], targetC
       skillAlignmentPoints = 0;
       skillAlignmentReason = `0 of ${repoSkills.length} detected GitHub repository language(s) match your declared skills.`;
     } else {
-      const repoBonus = matchedRepoCanonical.length >= 2 ? 7 : 4;
-      skillAlignmentPoints = Math.min(35, Math.round(repoRatio * 28) + repoBonus);
-      skillAlignmentReason = `Matched ${matchedRepoCanonical.length} of ${repoSkills.length} GitHub repository language(s) (${verifiedRepoSkills.slice(0, 4).join(', ')}).`;
+      const repoBonus = matchedRepoCanonical.length >= 2 ? 6 : 4;
+      skillAlignmentPoints = Math.min(35, Math.round(repoRatio * 26) + repoBonus + contribProofBonus);
+      skillAlignmentReason = `Matched ${matchedRepoCanonical.length} of ${repoSkills.length} GitHub repository language(s) (${verifiedRepoSkills.slice(0, 4).join(', ')})${contribProofBonus > 0 ? ` with ${verifiedContributions} verified contribution(s)` : ''}.`;
     }
   } else if (matchedIssueCanonical.length === 0) {
     if (matchedRepoCanonical.length > 0) {
-      skillAlignmentPoints = Math.min(5, matchedRepoCanonical.length * 2);
+      skillAlignmentPoints = Math.min(8, matchedRepoCanonical.length * 2 + (contribProofBonus > 0 ? 1 : 0));
       skillAlignmentReason = `0 issue skills matched (${issueRequiredSkills.length} required), with ${matchedRepoCanonical.length} transferable GitHub repository language(s).`;
     } else {
       skillAlignmentPoints = 0;
@@ -412,14 +500,14 @@ function calculateContributionReadiness(userProfile = null, issues = [], targetC
     }
   } else {
     const ratio = matchedIssueCanonical.length / issueRequiredSkills.length;
-    const baseMatchPts = Math.round(ratio * 27);
-    const breadthBonus = matchedIssueCanonical.length >= 2 ? 6 : 4;
+    const baseMatchPts = Math.round(ratio * 25);
+    const breadthBonus = matchedIssueCanonical.length >= 2 ? 5 : 3;
     const repoOverlapCount = matchedIssueCanonical.filter(s => matchedRepoCanonical.includes(s)).length;
     const repoProofBonus = repoOverlapCount > 0 ? 2 : 0;
-    skillAlignmentPoints = Math.min(35, baseMatchPts + breadthBonus + repoProofBonus);
+    skillAlignmentPoints = Math.min(35, baseMatchPts + breadthBonus + repoProofBonus + contribProofBonus);
     skillAlignmentReason = repoOverlapCount > 0
-      ? `Matched ${matchedIssueCanonical.length} of ${issueRequiredSkills.length} issue requirement(s) with ${repoOverlapCount} proven in your GitHub repositories.`
-      : `Matched ${matchedIssueCanonical.length} of ${issueRequiredSkills.length} detected repository/issue skill requirement(s).`;
+      ? `Matched ${matchedIssueCanonical.length} of ${issueRequiredSkills.length} issue requirement(s) with ${repoOverlapCount} proven in your GitHub repositories${contribProofBonus > 0 ? ` and ${verifiedContributions} verified contribution(s)` : ''}.`
+      : `Matched ${matchedIssueCanonical.length} of ${issueRequiredSkills.length} detected repository/issue skill requirement(s)${contribProofBonus > 0 ? ` with ${verifiedContributions} verified contribution(s)` : ''}.`;
   }
 
   // --- Factor 2: Developer Profile & Experience (Max 25 pts) ---
@@ -434,7 +522,7 @@ function calculateContributionReadiness(userProfile = null, issues = [], targetC
   else if (experienceLevel === 'Beginner') profileFoundationPoints += 6;
 
   const trimmedName = safeUser.name ? String(safeUser.name).trim() : '';
-  const hasName = Boolean(trimmedName.length > 0 && trimmedName.toLowerCase() !== String(safeUser.username || '').trim().toLowerCase() ? true : trimmedName.length > 0);
+  const hasName = trimmedName.length > 0;
   const trimmedBio = safeUser.bio ? String(safeUser.bio).trim() : '';
   const isDefaultSignupBio = trimmedBio === 'Open source developer exploring community projects.';
   const hasBio = Boolean(trimmedBio.length > 5 && (!isDefaultSignupBio || safeUser.is_onboarded));
@@ -516,7 +604,7 @@ function calculateContributionReadiness(userProfile = null, issues = [], targetC
     issueClarityReason = 'No GitHub issues available to evaluate issue difficulty and requirement clarity.';
   }
 
-  // --- Factor 4: Beginner-Friendly Issue Availability & Roadmap Progress (Max 15 pts) ---
+  // --- Factor 4: Beginner-Friendly Issue Availability, Roadmap & Contribution Activity (Max 15 pts) ---
   let availabilityPoints = 0;
   let availabilityReason = '';
 
@@ -530,9 +618,9 @@ function calculateContributionReadiness(userProfile = null, issues = [], targetC
   const beginnerFriendlyTotal = gfiCount + hwCount;
 
   if (safeIssues.length > 0 && beginnerFriendlyTotal > 0) {
-    if (beginnerFriendlyTotal >= 4) availabilityPoints += (gfiCount > 0 ? 10 : 8);
-    else if (beginnerFriendlyTotal >= 2) availabilityPoints += (gfiCount > 0 ? 8 : 6);
-    else if (beginnerFriendlyTotal === 1) availabilityPoints += (gfiCount > 0 ? 6 : 4);
+    if (beginnerFriendlyTotal >= 4) availabilityPoints += (gfiCount > 0 ? 8 : 6);
+    else if (beginnerFriendlyTotal >= 2) availabilityPoints += (gfiCount > 0 ? 7 : 5);
+    else if (beginnerFriendlyTotal === 1) availabilityPoints += (gfiCount > 0 ? 5 : 3);
   }
 
   const hasExplicitRoadmapCount = safeContext.roadmapCompletedCount !== undefined && safeContext.roadmapCompletedCount !== null;
@@ -552,12 +640,15 @@ function calculateContributionReadiness(userProfile = null, issues = [], targetC
     }
   }
   const roadmapBonus = Math.min(5, Math.max(0, Math.round((roadmapCompletedCount / 14) * 5)));
-  availabilityPoints = Math.min(15, Math.max(0, Math.round(availabilityPoints + roadmapBonus)));
+  const contribActivityBonus = githubConnected
+    ? (verifiedPrsMerged > 0 || verifiedContributions >= 5 ? 2 : (verifiedContributions > 0 ? 1 : 0))
+    : 0;
+  availabilityPoints = Math.min(15, Math.max(0, Math.round(availabilityPoints + roadmapBonus + contribActivityBonus)));
   availabilityReason = safeIssues.length === 0
-    ? `No GitHub issue results available to count beginner-friendly tasks; ${roadmapCompletedCount}/14 roadmap stages completed.`
+    ? `No GitHub issue results available to count beginner-friendly tasks; ${roadmapCompletedCount}/14 roadmap stages completed; ${verifiedContributions} verified GitHub contribution(s).`
     : (beginnerFriendlyTotal === 0
-        ? `No eligible Good First Issue or Help Wanted issues found among ${safeIssues.length} result(s); ${roadmapCompletedCount}/14 roadmap stages completed.`
-        : `${gfiCount} Good First Issue(s) and ${hwCount} Help Wanted issue(s) verified; ${roadmapCompletedCount}/14 roadmap stages completed.`);
+        ? `No eligible Good First Issue or Help Wanted issues found among ${safeIssues.length} result(s); ${roadmapCompletedCount}/14 roadmap stages completed; ${verifiedContributions} verified contribution(s).`
+        : `${gfiCount} Good First Issue(s) and ${hwCount} Help Wanted issue(s) verified; ${roadmapCompletedCount}/14 roadmap stages completed; ${verifiedContributions} verified contribution(s).`);
 
   skillAlignmentPoints = Math.min(35, Math.max(0, Math.round(skillAlignmentPoints)));
   profileFoundationPoints = Math.min(25, Math.max(0, Math.round(profileFoundationPoints)));
@@ -588,6 +679,14 @@ function calculateContributionReadiness(userProfile = null, issues = [], targetC
   } else {
     unverifiedData.push('Experience level is unconfigured.');
   }
+  if (githubConnected) {
+    verifiedData.push(`GitHub account connected (${verifiedReposCount} repository/repositories, ${verifiedContributions} verified contribution(s)).`);
+    if (verifiedContributions === 0) {
+      unverifiedData.push('Connected GitHub account has 0 verified recent contributions (commits, PRs, or issues).');
+    }
+  } else {
+    unverifiedData.push('No GitHub account connected via OAuth (0 synced repositories and 0 verified contributions).');
+  }
   if (repoSkills.length > 0) {
     verifiedData.push(`GitHub repository languages analyzed (${repoSkills.length} language${repoSkills.length === 1 ? '' : 's'}).`);
   } else {
@@ -610,7 +709,7 @@ function calculateContributionReadiness(userProfile = null, issues = [], targetC
   const hasSkills = declaredSkills.length > 0;
   const hasExperience = experienceLevel !== 'Unconfigured';
   const hasIssues = safeIssues.length > 0;
-  const hasRepos = repoSkills.length > 0 || (Array.isArray(safeContext.repositories) && safeContext.repositories.length > 0);
+  const hasRepos = repoSkills.length > 0 || verifiedReposCount > 0;
   const hasGithubData = hasIssues || hasRepos;
   const isStale = Boolean(safeContext.isStale);
   const githubError = safeContext.githubError || null;
@@ -642,8 +741,12 @@ function calculateContributionReadiness(userProfile = null, issues = [], targetC
     suggestions.push('Add at least 3 technical skills (e.g., Git, Documentation, or your primary stack) to broaden compatible repositories.');
   }
 
-  if (!hasGithubData) {
-    suggestions.push('GitHub issue or repository data is currently unavailable. Wait for GitHub API recovery or connect/sync your GitHub account.');
+  if (!githubConnected) {
+    suggestions.push('Connect your GitHub account via OAuth (/auth/github) to verify your repositories and contribution history.');
+  } else if (!hasGithubData) {
+    suggestions.push('GitHub issue or repository data is currently unavailable. Sync your GitHub account or wait for GitHub API recovery.');
+  } else if (verifiedContributions === 0) {
+    suggestions.push('Sync or push commits and Pull Requests on GitHub to verify active contribution history.');
   }
 
   if (missingSkills.length > 0) {
@@ -676,6 +779,11 @@ function calculateContributionReadiness(userProfile = null, issues = [], targetC
       hasIssues,
       hasRepos,
       hasGithubData,
+      githubConnected,
+      verifiedReposCount,
+      verifiedContributionsCount: verifiedContributions,
+      verifiedCommits90d: verifiedCommits,
+      verifiedPrsMerged,
       isStale,
       githubError,
       sourceLabel,

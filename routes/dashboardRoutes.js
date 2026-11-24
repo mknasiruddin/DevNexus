@@ -32,27 +32,23 @@ const {
 } = require('../services/saanviModulesService');
 
 const {
+  parseUserSkills,
+  buildReadinessContext
+} = require('../services/readinessHelper');
+
+const {
   synchronizeUserGitHubActivity,
   syncIfStale,
   getUserDashboardSyncData
 } = require('../services/githubSyncService');
+
+const { getUserRepositoryStats } = require('../services/repoStatsService');
 
 const streakService = require('../services/streakService');
 const badgeService = require('../services/badgeService');
 
 const { requireAuth } = require('../services/authService');
 const authRoutes = require('./authRoutes');
-
-function parseUserSkills(user) {
-  if (!user || !user.skills) return [];
-  if (Array.isArray(user.skills)) return user.skills;
-  try {
-    const parsed = JSON.parse(user.skills);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    return [];
-  }
-}
 
 function resolveTargetDeveloperProfile(req, rawUsernameQuery = '') {
   const loggedInUser = (req.user && req.user.id)
@@ -114,53 +110,34 @@ function resolveTargetDeveloperProfile(req, rawUsernameQuery = '') {
 
 async function getTargetRepositoriesSnapshot(targetCtx, sessionGithubToken = null) {
   const { targetUser, targetUsername, isSelf, isRegisteredDevNexusUser } = targetCtx;
-  if (isRegisteredDevNexusUser && targetUser && targetUser.github_id) {
-    const synced = getUserDashboardSyncData(targetUser.id, targetUser.github_id, {
-      isSelf,
-      repoLimit: 200,
-      activityLimit: 0
-    });
-    if (synced && synced.syncState) {
+  if (isRegisteredDevNexusUser) {
+    if (!targetUser || !targetUser.github_id) {
       return {
-        repos: synced.repos || [],
-        languageDistribution: synced.syncState.languageDistribution || [],
-        source: 'synced'
+        repos: [],
+        languageDistribution: [],
+        syncState: null,
+        source: 'unconnected'
       };
     }
+    const synced = getUserDashboardSyncData(targetUser.id, targetUser.github_id, {
+      isSelf,
+      repoLimit: null,
+      activityLimit: 0
+    });
+    return {
+      repos: (synced && Array.isArray(synced.repos)) ? synced.repos : [],
+      languageDistribution: (synced && synced.syncState && synced.syncState.languageDistribution) || [],
+      syncState: (synced && synced.syncState) || null,
+      source: 'synced'
+    };
   }
-  const repoRes = await getUserRepositories(targetUsername, isSelf ? sessionGithubToken : null, { sort: 'updated', perPage: 30 })
+  const repoRes = await getUserRepositories(targetUsername, null, { sort: 'updated', perPage: 30 })
     .catch(() => ({ repos: [] }));
   return {
     repos: repoRes.repos || [],
     languageDistribution: [],
+    syncState: null,
     source: repoRes.cached ? 'cached' : 'live'
-  };
-}
-
-function buildReadinessContext({
-  isRegisteredDevNexusUser = false,
-  roadmapProgress = null,
-  repos = [],
-  languageDistribution = [],
-  issueRes = null,
-  language = 'all',
-  source = null,
-  selectedIssue = null
-} = {}) {
-  const safeRepos = Array.isArray(repos) ? repos : [];
-  const hasIssues = Boolean(issueRes && Array.isArray(issueRes.issues) && issueRes.issues.length > 0);
-  const resolvedSource = source || (issueRes && issueRes.stale ? 'cached_stale' : (issueRes && issueRes.cached ? 'cached' : 'live'));
-  return {
-    roadmapCompletedCount: roadmapProgress ? roadmapProgress.completedCount : 0,
-    roadmapVerified: Boolean(isRegisteredDevNexusUser),
-    repositories: safeRepos,
-    languageDistribution: Array.isArray(languageDistribution) ? languageDistribution : [],
-    language: language !== 'all' ? language : null,
-    githubSource: resolvedSource,
-    isStale: Boolean(issueRes && issueRes.stale),
-    githubError: (issueRes && issueRes.error) || null,
-    githubDataAvailable: Boolean(hasIssues || safeRepos.length > 0),
-    issue: selectedIssue || null
   };
 }
 
@@ -186,28 +163,46 @@ router.get('/', requireAuth, async (req, res) => {
     const activityFilter = ['all', 'commit', 'repo', 'pr', 'issue', 'branch', 'release'].includes(req.query.activity)
       ? req.query.activity
       : 'all';
+    const hasGithubAccount = Boolean(targetUser && targetUser.github_id);
 
-    if (isSelf && targetUser.github_id) {
+    if (isSelf && hasGithubAccount) {
       await Promise.race([
         syncIfStale(targetUser.id, { sessionToken: githubToken }).catch(() => null),
         new Promise(resolve => setTimeout(resolve, 4000))
       ]);
     }
 
-    const syncedData = getUserDashboardSyncData(
-      targetUser.id,
-      targetUser.github_id,
-      {
-        isSelf,
-        activityCategory: activityFilter,
-        repoLimit: 200,
-        activityLimit: 15
-      }
-    );
+    const syncedData = hasGithubAccount
+      ? getUserDashboardSyncData(
+          targetUser.id,
+          targetUser.github_id,
+          {
+            isSelf,
+            activityCategory: activityFilter,
+            repoLimit: null,
+            activityLimit: 15
+          }
+        )
+      : { isConnected: false, syncState: null, counts: { total: 0, public: 0, private: 0, storedInSqlite: 0 }, repos: [], publicRepoList: [], privateRepoList: [], activities: [] };
+    const repoStats = isRegisteredDevNexusUser
+      ? getUserRepositoryStats(targetUser.id, { isSelf })
+      : null;
 
-    // 2. Fetch Real GitHub Profile (cached + deduplicated; preserves stale fallback on failure)
-    const profileRes = await getUserProfile(targetUsername, isSelf ? githubToken : null);
-    const { user: profileData, rateLimit: profileRateLimit, error: profileError } = profileRes;
+    // 2. Fetch GitHub Profile ONLY when target is connected to GitHub or explicitly inspecting an external GitHub handle
+    let profileData = null;
+    let profileRateLimit = null;
+    let profileError = null;
+    let profileRes = { cached: false, stale: false };
+
+    if (hasGithubAccount || !isRegisteredDevNexusUser) {
+      const ghProfileHandle = (hasGithubAccount && syncedData.syncState && syncedData.syncState.githubUsername)
+        ? syncedData.syncState.githubUsername
+        : targetUsername;
+      profileRes = await getUserProfile(ghProfileHandle, isSelf ? githubToken : null);
+      profileData = profileRes.user || null;
+      profileRateLimit = profileRes.rateLimit || null;
+      profileError = profileRes.error || null;
+    }
 
     // Personalized repository recommendations evaluated strictly for targetUser's skills
     let recommendedRepositories = [];
@@ -220,7 +215,8 @@ router.get('/', requireAuth, async (req, res) => {
         order: 'desc',
         page: 1,
         perPage: 12,
-        userSkills
+        userSkills,
+        preferUserLanguages: true
       }, githubToken);
 
       recommendationRateLimit = recommendationResults.rateLimit || null;
@@ -229,15 +225,11 @@ router.get('/', requireAuth, async (req, res) => {
         .slice(0, 6);
     }
 
-    // 3. Synchronized Repositories + Live Fallback (strictly public-only when inspecting another user)
-    let displayRepos = syncedData.repos || [];
+    // 3. Synchronized Repositories (0 repos for unconnected DevNexus accounts; external public lookup ONLY for unregistered handles)
+    let displayRepos = [];
     let reposRateLimit = null;
-    if (!syncedData.isConnected || !syncedData.syncState) {
-      const repoRes = await getUserRepositories(targetUsername, isSelf ? githubToken : null, { sort: 'updated', perPage: 100 });
-      displayRepos = repoRes.repos || [];
-      reposRateLimit = repoRes.rateLimit || null;
-    } else {
-      displayRepos = displayRepos.map(r => ({
+    if (hasGithubAccount) {
+      displayRepos = (syncedData.repos || []).map(r => ({
         ...r,
         health: r.health || calculateRepositoryHealth({
           ...r,
@@ -249,13 +241,17 @@ router.get('/', requireAuth, async (req, res) => {
           has_issues: r.hasIssues
         })
       }));
+    } else if (!isRegisteredDevNexusUser) {
+      const repoRes = await getUserRepositories(targetUsername, null, { sort: 'updated', perPage: 100 });
+      displayRepos = repoRes.repos || [];
+      reposRateLimit = repoRes.rateLimit || null;
     }
 
-    // 4. Recent GitHub Events fallback ONLY if timeline has no synced entries yet
+    // 4. Recent GitHub Events fallback ONLY for unregistered external handle inspection
     let events = [];
     let eventsRateLimit = null;
-    if (!syncedData.isConnected || !syncedData.syncState || !syncedData.activities || syncedData.activities.length === 0) {
-      const evRes = await getUserEvents(targetUsername, isSelf ? githubToken : null, { perPage: 8 });
+    if (!isRegisteredDevNexusUser) {
+      const evRes = await getUserEvents(targetUsername, null, { perPage: 8 });
       events = evRes.events || [];
       eventsRateLimit = evRes.rateLimit || null;
     }
@@ -273,12 +269,14 @@ router.get('/', requireAuth, async (req, res) => {
 
     const baseReadinessCtx = buildReadinessContext({
       isRegisteredDevNexusUser,
+      githubConnected: hasGithubAccount,
       roadmapProgress,
       repos: displayRepos,
       languageDistribution: syncedData.syncState ? syncedData.syncState.languageDistribution : [],
+      syncState: syncedData.syncState || null,
       issueRes: issueSearchResults,
       language,
-      source: syncedData.isConnected && syncedData.syncState ? 'synced' : (issueSearchResults.cached ? 'cached' : 'live')
+      source: hasGithubAccount && syncedData.syncState ? 'synced' : (issueSearchResults.cached ? 'cached' : 'live')
     });
 
     // Mark bookmarked issues and attach per-issue readiness evaluation for targetUser
@@ -336,12 +334,12 @@ router.get('/', requireAuth, async (req, res) => {
           : null)
     };
 
-    // 7. Auto-record daily contribution streak & retrieve metrics (Member 3)
+    // 7. Retrieve contribution streak metrics (read-only on page visits; advanced by real contributions)
     let streak = null;
     try {
-      streak = await streakService.recordActivity(req.user.id, 'dashboard_visit');
+      streak = streakService.getStreakSummary(req.user.id);
     } catch (e) {
-      console.warn('[DevNexus] Streak auto-record skipped:', e.message);
+      console.warn('[DevNexus] Streak summary skipped:', e.message);
     }
 
     // 8. Retrieve achievement badges summary (Member 3)
@@ -364,20 +362,22 @@ router.get('/', requireAuth, async (req, res) => {
       recommendedRepositories,
       targetUsername,
       profileUpdated: req.query.profileUpdated === '1',
+      githubDisconnected: req.query.githubDisconnected === '1',
       profile: profileData || {
         name: isSelf ? (targetUser.name || targetUsername) : targetUsername,
         login: targetUsername,
         avatar_url: isSelf && targetUser.avatar_url ? targetUser.avatar_url : 'https://avatars.githubusercontent.com/u/9919?v=4',
-        bio: isSelf && targetUser.bio ? targetUser.bio : 'Open source enthusiast',
+        bio: isSelf && targetUser.bio ? targetUser.bio : 'Open source developer exploring community projects.',
         public_repos: 0,
         followers: 0,
         following: 0,
-        created_at: new Date().toISOString()
+        created_at: targetUser.created_at || new Date().toISOString()
       },
       profileError,
       repos: displayRepos || [],
       events: events || [],
       syncState: syncedData.syncState,
+      repoStats,
       syncedActivities: syncedData.activities || [],
       isGithubConnected: Boolean(targetUser && targetUser.github_id),
       activeActivityFilter: activityFilter,
@@ -456,7 +456,7 @@ router.post('/api/sync', requireAuth, async (req, res) => {
 
     const syncedData = getUserDashboardSyncData(req.user.id, req.user.github_id, {
       isSelf: true,
-      repoLimit: 200,
+      repoLimit: null,
       activityLimit: 15
     });
 
@@ -475,13 +475,18 @@ router.post('/api/sync', requireAuth, async (req, res) => {
       issueRes.issues || [],
       buildReadinessContext({
         isRegisteredDevNexusUser: true,
+        githubConnected: Boolean(freshUser.github_id),
         roadmapProgress,
         repos: syncedData.repos || [],
         languageDistribution: syncedData.syncState ? syncedData.syncState.languageDistribution : [],
+        syncState: syncedData.syncState || null,
         issueRes,
         source: 'synced'
       })
     );
+
+    const syncedStreak = streakService.getStreakSummary(req.user.id);
+    const analyticsSummary = syncRes.analyticsSync || null;
 
     return res.json({
       success: true,
@@ -492,9 +497,14 @@ router.post('/api/sync', requireAuth, async (req, res) => {
       rateLimit: syncRes.rateLimit || null,
       message: syncRes.message,
       syncState: syncedData.syncState,
+      counts: syncedData.counts,
       repos: syncedData.repos,
+      publicRepoList: syncedData.publicRepoList,
+      privateRepoList: syncedData.privateRepoList,
       activities: syncedData.activities,
-      readinessScore
+      readinessScore,
+      streak: syncedStreak,
+      analyticsSync: analyticsSummary
     });
   } catch (err) {
     console.error('[DevNexus GitHub Sync API Error]', err.message);
@@ -516,19 +526,22 @@ router.get('/api/sync/status', requireAuth, (req, res) => {
     });
   }
 
-  const activityCategory = ['all', 'commit', 'repo', 'pr', 'issue', 'branch', 'release'].includes(req.query.activity)
+  const activityCategory = ['all', 'commit', 'repo', 'pr', 'issue', 'review', 'branch', 'release'].includes(req.query.activity)
     ? req.query.activity
     : 'all';
   const repoPage = Math.max(1, parseInt(req.query.repoPage || '1', 10) || 1);
   const activityPage = Math.max(1, parseInt(req.query.activityPage || '1', 10) || 1);
-  const repoLimit = Math.max(1, Math.min(500, parseInt(req.query.repoLimit || '200', 10) || 200));
+  const hasExplicitRepoLimit = req.query.repoLimit !== undefined && req.query.repoLimit !== '';
+  const repoLimit = hasExplicitRepoLimit
+    ? Math.max(1, Math.min(5000, parseInt(req.query.repoLimit, 10) || 5000))
+    : null;
   const activityLimit = 15;
 
   const syncedData = getUserDashboardSyncData(req.user.id, req.user.github_id, {
     isSelf: true,
     activityCategory,
     repoLimit,
-    repoOffset: (repoPage - 1) * repoLimit,
+    repoOffset: repoLimit ? (repoPage - 1) * repoLimit : 0,
     activityLimit,
     activityOffset: (activityPage - 1) * activityLimit
   });
@@ -537,7 +550,10 @@ router.get('/api/sync/status', requireAuth, (req, res) => {
     success: true,
     isConnected: syncedData.isConnected,
     syncState: syncedData.syncState,
+    counts: syncedData.counts,
     repos: syncedData.repos,
+    publicRepoList: syncedData.publicRepoList,
+    privateRepoList: syncedData.privateRepoList,
     activities: syncedData.activities
   });
 });
@@ -568,9 +584,11 @@ router.get('/api/readiness', requireAuth, async (req, res) => {
 
     const ctx = buildReadinessContext({
       isRegisteredDevNexusUser,
+      githubConnected: Boolean(targetUser && targetUser.github_id),
       roadmapProgress,
       repos: repoSnap.repos,
       languageDistribution: repoSnap.languageDistribution,
+      syncState: repoSnap.syncState || null,
       issueRes,
       language,
       source: repoSnap.source,
@@ -625,9 +643,11 @@ router.get('/api/issues', requireAuth, async (req, res) => {
 
     const readinessCtx = buildReadinessContext({
       isRegisteredDevNexusUser,
+      githubConnected: Boolean(targetUser && targetUser.github_id),
       roadmapProgress,
       repos: repoSnap.repos,
       languageDistribution: repoSnap.languageDistribution,
+      syncState: repoSnap.syncState || null,
       issueRes: results,
       language,
       source: repoSnap.source

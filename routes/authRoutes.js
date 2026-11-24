@@ -35,10 +35,13 @@ const {
   updateUserProfile,
   logActivity,
   saveUserGithubToken,
-  findUserByGithubId
+  findUserByGithubId,
+  linkGithubAccountToUser,
+  disconnectGithubAccount
 } = require('../db/database');
 
 const { synchronizeUserGitHubActivity } = require('../services/githubSyncService');
+const { syncUserAnalyticsAndLeaderboard } = require('../services/analyticsService');
 
 const {
   requireAuth,
@@ -478,45 +481,71 @@ router.get('/github/callback', async (req, res) => {
     // 1. Secure backend authorization code exchange
     const tokenData = await exchangeOAuthCode(code, req);
     const accessToken = tokenData.access_token;
+    const exchangeScope = typeof tokenData.scope === 'string' ? tokenData.scope.trim() : '';
 
-    // 2. Fetch authenticated GitHub user profile
-    const { user: githubProfile } = await getAuthenticatedUser(accessToken);
+    // 2. Fetch authenticated GitHub user profile + OAuth scopes header
+    const { user: githubProfile, scopes: headerScopes } = await getAuthenticatedUser(accessToken);
+    const effectiveScopes = (Array.isArray(headerScopes) && headerScopes.length > 0)
+      ? headerScopes.join(', ')
+      : exchangeScope;
 
-    // 2b. If an already logged-in local user initiated OAuth Connect GitHub, bind github_id to their account if unclaimed
-    if (req.user && req.user.id && !req.user.github_id && !findUserByGithubId(githubProfile.id)) {
-      db.prepare('UPDATE users SET github_id = ?, avatar_url = COALESCE(?, avatar_url), updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-        .run(String(githubProfile.id), githubProfile.avatar_url || null, req.user.id);
+    // 3. Associate GitHub account cleanly without cross-account hijacking
+    let localUser = null;
+    let isNew = false;
+
+    if (req.user && req.user.id) {
+      try {
+        localUser = linkGithubAccountToUser(req.user.id, githubProfile);
+      } catch (linkErr) {
+        if (linkErr && linkErr.code === 'GITHUB_ALREADY_LINKED') {
+          return res.status(409).render('error', {
+            siteName: 'DevNexus',
+            activePage: 'login',
+            statusCode: 409,
+            title: 'GitHub Account Already Connected',
+            message: 'This GitHub account is already connected to a different DevNexus account. Please disconnect it there or sign out before signing in with this GitHub account.',
+            actionUrl: '/dashboard',
+            actionText: 'Return to Dashboard'
+          });
+        }
+        throw linkErr;
+      }
+    } else {
+      const upserted = upsertGithubUser(githubProfile);
+      localUser = upserted.user;
+      isNew = upserted.isNew;
     }
-
-    // 3. Create or update user in SQLite ACID database
-    const { user: localUser, isNew } = upsertGithubUser(githubProfile);
 
     if (!localUser || localUser.status !== 'active') {
       logActivity(localUser ? localUser.id : null, 'USER_LOGIN_FAIL', githubProfile.login, 'GitHub OAuth login blocked: account suspended');
       return res.redirect('/login?error=' + encodeURIComponent('This account has been suspended. Please contact an administrator.'));
     }
 
-    // 4. Create or update user in MongoDB if configured & save encrypted token for scheduled sync
+    // 4. Create or update user in MongoDB if configured & save encrypted token + granted scopes
     await upsertMongoUser(githubProfile, localUser);
-    saveUserGithubToken(localUser.id, githubProfile.id, githubProfile.login, accessToken);
+    saveUserGithubToken(localUser.id, githubProfile.id, githubProfile.login, accessToken, effectiveScopes || null);
 
     // 5. Establish secure regenerated session
     if (req.session.regenerate) req.session.regenerate();
     req.session.userId = localUser.id;
     req.session.githubAccessToken = accessToken;
     req.session.githubToken = accessToken;
+    req.session.githubScope = effectiveScopes || null;
     req.session.oauthState = null;
     req.session.save();
 
     logActivity(localUser.id, isNew ? 'USER_SIGNUP' : 'USER_LOGIN', localUser.username, 'Authenticated via GitHub OAuth');
 
-    // Trigger initial GitHub activity sync cleanly in background without blocking OAuth redirect
-    synchronizeUserGitHubActivity(localUser.id, {
-      sessionToken: accessToken,
-      force: true
-    }).catch(err => {
-      console.warn('[DevNexus OAuth Initial Sync] Skipped:', err.message);
-    });
+    // Trigger initial GitHub activity sync (wait briefly so immediate dashboard/portfolio visits see fresh repos)
+    await Promise.race([
+      synchronizeUserGitHubActivity(localUser.id, {
+        sessionToken: accessToken,
+        force: true
+      }).catch(err => {
+        console.warn('[DevNexus OAuth Initial Sync] Skipped:', err.message);
+      }),
+      new Promise(resolve => setTimeout(resolve, 10000))
+    ]);
 
     // 6. Redirect new users to onboarding, existing users to dashboard
     if (isNew || !localUser.is_onboarded) {
@@ -744,6 +773,40 @@ function handleAdminLogin(req, res) {
 }
 
 router.post('/admin/login', loginRateLimiter, handleAdminLogin);
+
+// Disconnect GitHub OAuth connection & clear this user's synced GitHub snapshot
+router.post('/github/disconnect', requireAuth, (req, res) => {
+  try {
+    disconnectGithubAccount(req.user.id);
+    try {
+      syncUserAnalyticsAndLeaderboard(req.user.id);
+    } catch (e) {
+      // Non-blocking refresh for any remaining DevNexus platform milestones
+    }
+    if (req.session) {
+      req.session.githubAccessToken = null;
+      req.session.githubToken = null;
+      req.session.githubScope = null;
+      if (typeof req.session.save === 'function') {
+        req.session.save();
+      }
+    }
+    logActivity(req.user.id, 'GITHUB_DISCONNECT', req.user.username, 'Disconnected GitHub OAuth account and cleared synced repositories');
+    if (wantsJson(req)) {
+      return res.json({
+        success: true,
+        message: 'GitHub account disconnected and synced repository cache cleared.'
+      });
+    }
+    return res.redirect('/dashboard?githubDisconnected=1');
+  } catch (err) {
+    console.error('[DevNexus GitHub Disconnect Error]', err.message);
+    if (wantsJson(req)) {
+      return res.status(500).json({ success: false, error: 'Failed to disconnect GitHub account.' });
+    }
+    return res.redirect('/dashboard');
+  }
+});
 
 // Logout
 router.get('/logout', (req, res) => {

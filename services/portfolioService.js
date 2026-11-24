@@ -23,9 +23,18 @@ const {
 } = require('../db/database');
 
 const {
-  getUserProfile,
-  getUserRepositories
+  getUserProfile
 } = require('./githubService');
+
+const {
+  getUserDashboardSyncData,
+  synchronizeUserGitHubActivity,
+  syncIfStale
+} = require('./githubSyncService');
+
+const { getUserRepositoryStats } = require('./repoStatsService');
+
+const { computeUserReadinessSnapshot } = require('./readinessHelper');
 
 const { SKILL_TREE_GRAPH } = require('./skillTreeService');
 
@@ -35,10 +44,11 @@ const { SKILL_TREE_GRAPH } = require('./skillTreeService');
 
 /**
  * Returns a consolidated portfolio object for the given user.
- * @param {string|number} usernameOrId - GitHub username or numeric DB user id
+ * @param {string|number} usernameOrId - DevNexus username or numeric DB user id
  * @param {string|null}   githubToken  - Optional GitHub OAuth token for authenticated requests
+ * @param {object}        options      - Optional viewer context ({ viewerUserId })
  */
-async function getDeveloperPortfolio(usernameOrId, githubToken = null) {
+async function getDeveloperPortfolio(usernameOrId, githubToken = null, { viewerUserId = null } = {}) {
   // 1. Resolve user from SQLite
   let user = null;
   if (typeof usernameOrId === 'number' || /^\d+$/.test(String(usernameOrId))) {
@@ -53,6 +63,7 @@ async function getDeveloperPortfolio(usernameOrId, githubToken = null) {
 
   const userId = user.id;
   const username = user.username;
+  const isSelf = Boolean(viewerUserId && Number(viewerUserId) === Number(userId));
 
   // 2. Portfolio settings
   const settings = getPortfolioSettings(userId);
@@ -66,17 +77,47 @@ async function getDeveloperPortfolio(usernameOrId, githubToken = null) {
     featuredRepoNames = [];
   }
 
-  // 3. GitHub profile + repos (same call pattern as dashboardRoutes.js)
-  const { user: profile, error: profileError } = await getUserProfile(username, githubToken);
-  const { repos } = await getUserRepositories(username, githubToken, { sort: 'updated', perPage: 30 });
+  // 3. GitHub profile + repos strictly scoped to user's own connected github_id
+  let profile = null;
+  let repos = [];
+  let syncState = null;
+
+  if (user.github_id) {
+    if (isSelf) {
+      await Promise.race([
+        syncIfStale(user.id, { sessionToken: githubToken }).catch(() => null),
+        new Promise(resolve => setTimeout(resolve, 3000))
+      ]);
+    }
+    const syncedData = getUserDashboardSyncData(user.id, user.github_id, {
+      isSelf,
+      repoLimit: null,
+      activityLimit: 0
+    });
+    repos = Array.isArray(syncedData.repos) ? syncedData.repos : [];
+    syncState = syncedData.syncState || null;
+
+    const ghHandle = (syncState && syncState.githubUsername) ? syncState.githubUsername : username;
+    const profileRes = await getUserProfile(ghHandle, isSelf ? githubToken : null).catch(() => ({ user: null }));
+    profile = profileRes.user || null;
+  }
 
   // Top 6 by updated (already sorted, just slice)
-  const topRepos = (Array.isArray(repos) ? repos : []).slice(0, 6);
+  const topRepos = repos.slice(0, 6);
 
   // Featured repos filtered by settings
   const featuredRepos = featuredRepoNames.length > 0
-    ? (Array.isArray(repos) ? repos : []).filter(r => featuredRepoNames.includes(r.name || r.fullName))
+    ? repos.filter(r => featuredRepoNames.includes(r.name || r.fullName))
     : [];
+
+  // Consistent Contribution Readiness Score matching Dashboard
+  const readinessSnapshot = await computeUserReadinessSnapshot(user, {
+    isSelf,
+    githubToken: isSelf ? githubToken : null,
+    cacheOnly: false,
+    reposOverride: repos,
+    syncStateOverride: syncState
+  });
 
   // 4. Leaderboard rank — search full leaderboard for this user
   let leaderboardRank = null;
@@ -143,16 +184,25 @@ async function getDeveloperPortfolio(usernameOrId, githubToken = null) {
     };
   });
 
+  const repoStats = getUserRepositoryStats(userId, { isSelf });
+
   return {
     user,
     settings,
     profile: profile || null,
+    syncState,
+    repoStats,
+    allReposCount: repoStats.total,
+    totalStars: repos.reduce((s, r) => s + (r.stars !== undefined ? r.stars : (r.stargazers_count || 0)), 0),
     repos: topRepos,
+    allRepos: repos,
     featuredRepos,
     leaderboardRank,
     skillTreeSummary,
     recentActivity,
-    badges
+    badges,
+    readinessScore: readinessSnapshot.readiness,
+    roadmapProgress: readinessSnapshot.roadmapProgress
   };
 }
 
@@ -230,14 +280,29 @@ function updatePortfolioSettings(userId, payload) {
 async function syncPortfolioFromGitHub(userId, githubToken = null) {
   const user = findUserById(userId);
   if (!user) return { success: false, error: 'USER_NOT_FOUND' };
+  if (!user.github_id) {
+    return {
+      success: false,
+      reason: 'GITHUB_NOT_CONNECTED',
+      message: 'Connect your GitHub account via OAuth before syncing portfolio repositories.'
+    };
+  }
 
-  const { user: profile, error: profileError } = await getUserProfile(user.username, githubToken);
-  const { repos, error: reposError } = await getUserRepositories(user.username, githubToken, { sort: 'updated', perPage: 30 });
+  const syncRes = await synchronizeUserGitHubActivity(user.id, {
+    sessionToken: githubToken,
+    force: true
+  });
+  const syncedData = getUserDashboardSyncData(user.id, user.github_id, {
+    isSelf: true,
+    repoLimit: null,
+    activityLimit: 0
+  });
 
   return {
-    success: true,
-    profile: profile || null,
-    repos: Array.isArray(repos) ? repos : []
+    success: Boolean(syncRes && syncRes.ok),
+    message: syncRes ? syncRes.message : 'GitHub sync failed.',
+    syncState: syncedData.syncState,
+    repos: Array.isArray(syncedData.repos) ? syncedData.repos : []
   };
 }
 
